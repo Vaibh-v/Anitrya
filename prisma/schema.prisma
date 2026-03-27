@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  ANALYST
+  VIEWER
+}
+
+enum IntegrationProvider {
+  GOOGLE_GSC
+  GOOGLE_GA4
+  SEMRUSH
+  AHREFS
+  BIRDEYE
+}
+
+enum SyncSource {
+  GOOGLE_GSC
+  GOOGLE_GA4
+  SEMRUSH
+  AHREFS
+  BIRDEYE
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  ERROR
+}
+
+enum InsightSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships Membership[]
+  tokens      IntegrationToken[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  tokens      IntegrationToken[]
+  syncRuns    SyncRun[]
+  insights    Insight[]
+  gscSites    GscSite[]
+  ga4Props    Ga4Property[]
+  gscMetrics  GscDailyMetric[]
+  ga4Metrics  Ga4DailyMetric[]
+  projects    Project[]
+}
+
+model Membership {
+  id          String   @id @default(cuid())
+  role        Role     @default(ADMIN)
+  userId      String
+  workspaceId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model IntegrationToken {
+  id           String              @id @default(cuid())
+  provider     IntegrationProvider
+  accessToken  String?
+  refreshToken String?
+  expiresAt    Int?
+  scope        String?
+  apiKey       String?
+  workspaceId  String
+  userId       String
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, provider])
+  @@index([userId])
+}
+
+model SyncRun {
+  id          String     @id @default(cuid())
+  workspaceId String
+  source      SyncSource
+  status      SyncStatus @default(RUNNING)
+  rowsSynced  Int        @default(0)
+  error       String?
+  metadata    Json?
+  startedAt   DateTime   @default(now())
+  endedAt     DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, source])
+}
+
+model Insight {
+  id          String          @id @default(cuid())
+  workspaceId String
+  title       String
+  summary     String
+  evidence    Json?
+  confidence  Float
+  severity    InsightSeverity
+  nextSteps   String
+  createdAt   DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+model GscSite {
+  id          String   @id @default(cuid())
+  workspaceId String
+  siteUrl     String
+  permission  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  metrics   GscDailyMetric[]
+
+  @@unique([workspaceId, siteUrl])
+}
+
+model GscDailyMetric {
+  id          String   @id @default(cuid())
+  workspaceId String
+  siteId      String
+  date        DateTime
+  clicks      Float
+  impressions Float
+  ctr         Float
+  position    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  site      GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, date])
+  @@index([workspaceId, date])
+}
+
+model Ga4Property {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  propertyName String
+  displayName  String?
+  accountName  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  metrics   Ga4DailyMetric[]
+
+  @@unique([workspaceId, propertyName])
+}
+
+model Ga4DailyMetric {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  propertyId      String
+  date            DateTime
+  users           Float
+  sessions        Float
+  engagedSessions Float
+  engagementRate  Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  property  Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, date])
+  @@index([workspaceId, date])
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  workspaceId   String
+  createdAt     DateTime @default(now())
+  ga4PropertyId String?
+  gscSiteId     String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
