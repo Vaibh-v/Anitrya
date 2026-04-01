@@ -1,4 +1,5 @@
 import type { NextAuthOptions } from "next-auth";
+import { getServerSession } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import { ensureWorkspaceForUser } from "@/lib/workspace";
@@ -22,18 +23,18 @@ export const authOptions: NextAuthOptions = {
         where: { email: user.email },
         update: {
           name: user.name ?? undefined,
-          image: user.image ?? undefined
+          image: user.image ?? undefined,
         },
         create: {
           email: user.email,
           name: user.name ?? null,
-          image: user.image ?? null
-        }
+          image: user.image ?? null,
+        },
       });
 
       const workspace = await ensureWorkspaceForUser({
         userId: dbUser.id,
-        email: dbUser.email
+        email: dbUser.email,
       });
 
       const provider = integrationProviderFor(account?.provider);
@@ -43,15 +44,15 @@ export const authOptions: NextAuthOptions = {
           where: {
             workspaceId_provider: {
               workspaceId: workspace.id,
-              provider
-            }
+              provider,
+            },
           },
           update: {
             accessToken: account?.access_token ?? null,
             refreshToken: account?.refresh_token ?? null,
             expiresAt: account?.expires_at ?? null,
             scope: account?.scope ?? null,
-            userId: dbUser.id
+            userId: dbUser.id,
           },
           create: {
             workspaceId: workspace.id,
@@ -60,8 +61,8 @@ export const authOptions: NextAuthOptions = {
             refreshToken: account?.refresh_token ?? null,
             expiresAt: account?.expires_at ?? null,
             scope: account?.scope ?? null,
-            userId: dbUser.id
-          }
+            userId: dbUser.id,
+          },
         });
       }
 
@@ -72,13 +73,13 @@ export const authOptions: NextAuthOptions = {
       if (!session.user?.email) return session;
 
       const user = await prisma.user.findUnique({
-        where: { email: session.user.email }
+        where: { email: session.user.email },
       });
 
       if (user) {
         const workspace = await ensureWorkspaceForUser({
           userId: user.id,
-          email: user.email
+          email: user.email,
         });
 
         session.user.id = user.id;
@@ -93,10 +94,20 @@ export const authOptions: NextAuthOptions = {
       if (url.startsWith("/")) return `${baseUrl}${url}`;
       if (url.startsWith(baseUrl)) return url;
       return `${baseUrl}/home`;
-    }
+    },
   },
   pages: {
     signIn: "/",
-    error: "/auth/error"
-  }
+    error: "/auth/error",
+  },
 };
+
+export async function requireSession() {
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    throw Object.assign(new Error("Unauthorized"), { status: 401 });
+  }
+
+  return session;
+}

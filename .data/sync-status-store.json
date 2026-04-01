@@ -1,0 +1,140 @@
+{
+  "runs": [
+    {
+      "workspaceId": "cmn7wu7mp00018je27rkwtcnn",
+      "projectSlug": "zt",
+      "state": "success",
+      "from": "2026-02-01",
+      "to": "2026-03-25",
+      "sources": [
+        "google_ga4",
+        "google_gsc"
+      ],
+      "startedAt": "2026-03-31T16:05:37.668Z",
+      "endedAt": "2026-03-31T16:05:37.676Z",
+      "sourceResults": [
+        {
+          "source": "google_ga4",
+          "status": "success",
+          "rowsProcessed": 26,
+          "startedAt": "2026-03-31T16:05:37.674Z",
+          "endedAt": "2026-03-31T16:05:37.674Z",
+          "message": "Sync completed and evidence rows were processed."
+        },
+        {
+          "source": "google_gsc",
+          "status": "success",
+          "rowsProcessed": 91,
+          "startedAt": "2026-03-31T16:05:37.674Z",
+          "endedAt": "2026-03-31T16:05:37.674Z",
+          "message": "Sync completed and evidence rows were processed."
+        }
+      ],
+      "totalRowsProcessed": 117,
+      "message": "Sync completed. At least one source returned evidence rows.",
+      "id": "cmn7wu7mp00018je27rkwtcnn::zt::1774973137672"
+    },
+    {
+      "workspaceId": "cmn7wu7mp00018je27rkwtcnn",
+      "projectSlug": "zt",
+      "state": "success",
+      "from": "2026-02-01",
+      "to": "2026-03-25",
+      "sources": [
+        "google_ga4",
+        "google_gsc"
+      ],
+      "startedAt": "2026-03-31T14:54:15.328Z",
+      "endedAt": "2026-03-31T14:54:15.335Z",
+      "sourceResults": [
+        {
+          "source": "google_ga4",
+          "status": "success",
+          "rowsProcessed": 26,
+          "startedAt": "2026-03-31T14:54:15.334Z",
+          "endedAt": "2026-03-31T14:54:15.334Z",
+          "message": "Sync completed and evidence rows were processed."
+        },
+        {
+          "source": "google_gsc",
+          "status": "success",
+          "rowsProcessed": 91,
+          "startedAt": "2026-03-31T14:54:15.334Z",
+          "endedAt": "2026-03-31T14:54:15.334Z",
+          "message": "Sync completed and evidence rows were processed."
+        }
+      ],
+      "totalRowsProcessed": 117,
+      "message": "Sync completed. At least one source returned evidence rows.",
+      "id": "cmn7wu7mp00018je27rkwtcnn::zt::1774968855332"
+    },
+    {
+      "workspaceId": "cmn7wu7mp00018je27rkwtcnn",
+      "projectSlug": "zt",
+      "state": "success",
+      "from": "2026-02-01",
+      "to": "2026-03-25",
+      "sources": [
+        "google_ga4",
+        "google_gsc"
+      ],
+      "startedAt": "2026-03-31T12:22:25.529Z",
+      "endedAt": "2026-03-31T12:22:25.539Z",
+      "sourceResults": [
+        {
+          "source": "google_ga4",
+          "status": "success",
+          "rowsProcessed": 26,
+          "startedAt": "2026-03-31T12:22:25.537Z",
+          "endedAt": "2026-03-31T12:22:25.537Z",
+          "message": "Sync completed and evidence rows were processed."
+        },
+        {
+          "source": "google_gsc",
+          "status": "success",
+          "rowsProcessed": 91,
+          "startedAt": "2026-03-31T12:22:25.537Z",
+          "endedAt": "2026-03-31T12:22:25.537Z",
+          "message": "Sync completed and evidence rows were processed."
+        }
+      ],
+      "totalRowsProcessed": 117,
+      "message": "Sync completed. At least one source returned evidence rows.",
+      "id": "cmn7wu7mp00018je27rkwtcnn::zt::1774959745535"
+    },
+    {
+      "workspaceId": "cmn7wu7mp00018je27rkwtcnn",
+      "projectSlug": "zt",
+      "state": "success",
+      "from": "2026-02-01",
+      "to": "2026-03-25",
+      "sources": [
+        "google_ga4",
+        "google_gsc"
+      ],
+      "startedAt": "2026-03-31T01:34:47.667Z",
+      "endedAt": "2026-03-31T01:34:47.676Z",
+      "sourceResults": [
+        {
+          "source": "google_ga4",
+          "status": "success",
+          "rowsProcessed": 26,
+          "startedAt": "2026-03-31T01:34:47.674Z",
+          "endedAt": "2026-03-31T01:34:47.674Z",
+          "message": "Sync completed and evidence rows were processed."
+        },
+        {
+          "source": "google_gsc",
+          "status": "success",
+          "rowsProcessed": 91,
+          "startedAt": "2026-03-31T01:34:47.674Z",
+          "endedAt": "2026-03-31T01:34:47.674Z",
+          "message": "Sync completed and evidence rows were processed."
+        }
+      ],
+      "totalRowsProcessed": 117,
+      "message": "Sync completed. At least one source returned evidence rows.",
+      "id": "cmn7wu7mp00018je27rkwtcnn::zt::1774920887672"
+    }
+  ]
+}

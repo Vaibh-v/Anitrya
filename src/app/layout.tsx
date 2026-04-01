@@ -1,18 +1,26 @@
 import "./globals.css";
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import { ReactNode } from "react";
 
-export const metadata = {
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter"
+});
+
+export const metadata: Metadata = {
   title: "Anitrya",
-  description: "Analytics intelligence system"
+  description: "Analytics intelligence platform"
 };
 
 export default function RootLayout({
   children
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }

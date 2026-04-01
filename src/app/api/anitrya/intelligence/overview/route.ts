@@ -1,11 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/route-helpers";
-import { getWorkspaceIntelligence } from "@/lib/intelligence";
+import { getProjectIntelligence } from "@/lib/intelligence";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const { workspace } = await requireAuth();
-    const intelligence = await getWorkspaceIntelligence(workspace.id);
+    const project = request.nextUrl.searchParams.get("project");
+
+    const intelligence = await getProjectIntelligence(workspace.id, project);
+
+    if (!intelligence) {
+      return NextResponse.json(
+        { error: "PROJECT_NOT_FOUND" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json(intelligence);
   } catch (error: unknown) {

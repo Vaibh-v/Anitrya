@@ -1,162 +1,173 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { ensureWorkspaceForUser } from "@/lib/workspace";
-import { prisma } from "@/lib/prisma";
-import { getWorkspaceIntelligence } from "@/lib/intelligence";
+import { getProjectIntelligenceForRange } from "@/lib/intelligence";
+import { resolveDateRange } from "@/lib/intelligence/date-range";
+import {
+  DateRangeToolbar,
+  DiagnosticsPanel,
+} from "@/lib/intelligence/ui";
+import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
+import { PageHero } from "@/components/shared/PageHero";
+import { KpiStrip } from "@/components/shared/KpiStrip";
+import { EvidenceCountGrid } from "@/components/shared/EvidenceCountGrid";
+import { InsightStack } from "@/components/shared/InsightStack";
 
-export const dynamic = "force-dynamic";
+type PageProps = {
+  searchParams?: Promise<{
+    project?: string;
+    workspace?: string;
+    preset?: string;
+    from?: string;
+    to?: string;
+  }>;
+};
 
-export default async function SeoPage() {
-  const session = await getServerSession(authOptions);
+function safeDiagnostics(intelligence: any) {
+  return (
+    intelligence?.diagnostics ?? {
+      seo: {
+        title: "SEO",
+        summary:
+          "Search evidence is present but the current rule set does not yet rank a stronger SEO hypothesis.",
+        confidence: "low",
+        actions: [
+          "Inspect query-level and page-level evidence for stronger CTR or position gaps.",
+          "Prioritize the most visible pages where search demand is already established.",
+        ],
+      },
+    }
+  );
+}
 
-  if (!session?.user?.email || !session.user.id) {
-    return <div className="text-white">Authentication state is missing.</div>;
-  }
+function safeSeoFindings(intelligence: any) {
+  const findings = Array.isArray(intelligence?.seoFindings)
+    ? intelligence.seoFindings
+    : [];
 
-  const workspace = await ensureWorkspaceForUser({
-    userId: session.user.id,
-    email: session.user.email
+  return findings.map((finding: any, index: number) => ({
+    title: String(finding?.title ?? `SEO finding ${index + 1}`),
+    body: String(finding?.body ?? finding?.summary ?? ""),
+    confidence: String(finding?.confidence ?? "low"),
+  }));
+}
+
+export default async function SeoPage({ searchParams }: PageProps) {
+  const params = (await searchParams) ?? {};
+
+  const selectedProject = await resolveSelectedProject({
+    workspaceId: params.workspace ?? null,
+    projectSlug: params.project ?? null,
   });
 
-  const [sites, lastRun, intelligence] = await Promise.all([
-    prisma.gscSite.findMany({
-      where: { workspaceId: workspace.id },
-      orderBy: { siteUrl: "asc" }
-    }),
-    prisma.syncRun.findFirst({
-      where: {
-        workspaceId: workspace.id,
-        source: "GOOGLE_GSC"
-      },
-      orderBy: { startedAt: "desc" }
-    }),
-    getWorkspaceIntelligence(workspace.id)
-  ]);
+  const dateRange = resolveDateRange({
+    preset: params.preset,
+    from: params.from,
+    to: params.to,
+  });
+
+  const intelligence = (await getProjectIntelligenceForRange({
+    workspaceId: selectedProject?.workspaceId ?? params.workspace ?? null,
+    projectSlug: selectedProject?.slug ?? params.project ?? null,
+    preset: params.preset,
+    from: params.from,
+    to: params.to,
+  })) as any;
+
+  const project = intelligence?.project ?? selectedProject ?? null;
+  const diagnostics = safeDiagnostics(intelligence);
+  const evidence = intelligence?.evidence ?? {};
+  const queryRows = Array.isArray(evidence?.gscQueryRows)
+    ? evidence.gscQueryRows.length
+    : 0;
+  const pageRows = Array.isArray(evidence?.gscPageRows)
+    ? evidence.gscPageRows.length
+    : 0;
+  const findings = safeSeoFindings(intelligence);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <div className="section-kicker">Search intelligence</div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">SEO</h1>
-        <p className="mt-3 max-w-4xl body-muted">
-          Search-side visibility, click capture, and evidence-backed interpretation
-          from the currently synced GSC layer.
-        </p>
+    <main className="space-y-8">
+      <DateRangeToolbar
+        basePath="/home/seo"
+        projectSlug={selectedProject?.slug ?? params.project ?? null}
+        workspaceId={selectedProject?.workspaceId ?? params.workspace ?? null}
+        range={dateRange}
+      />
+
+      <PageHero
+        eyebrow="Anitrya intelligence"
+        title="SEO evidence"
+        body="Search-demand and search-page interpretation built from normalized Search Console evidence."
+        projectLabel={project?.name ?? "No project selected"}
+        projectSubtext={
+          project?.slug
+            ? `Slug: ${project.slug}`
+            : "Select a project to load SEO evidence."
+        }
+      />
+
+      <KpiStrip
+        items={[
+          {
+            label: "Query rows",
+            value: queryRows,
+            context: "Available query-level evidence for the current range",
+          },
+          {
+            label: "Page rows",
+            value: pageRows,
+            context: "Available page-level evidence for the current range",
+          },
+          {
+            label: "Entity findings",
+            value: findings.length,
+            context: "Structured SEO findings currently ranked",
+          },
+          {
+            label: "Confidence",
+            value: diagnostics.seo.confidence,
+            context: "Current ranked confidence for SEO interpretation",
+          },
+        ]}
+      />
+
+      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+        <EvidenceCountGrid
+          title="SEO evidence coverage"
+          subtitle="Coverage across demand capture and page-level search visibility."
+          cards={[
+            {
+              label: "Query evidence",
+              value: queryRows,
+              body: "Search demand capture evidence used for topic, CTR, and impression interpretation.",
+            },
+            {
+              label: "Page evidence",
+              value: pageRows,
+              body: "Page-level visibility evidence used for ranking and page-priority interpretation.",
+            },
+            {
+              label: "Best next step",
+              value: "CTR / rank focus",
+              body: "Use query and page concentration to find stronger confirming patterns.",
+            },
+            {
+              label: "Readiness",
+              value: queryRows + pageRows > 0 ? "present" : "thin",
+              body: "Indicates whether SEO evidence is deep enough for stronger ranking.",
+            },
+          ]}
+        />
+
+        <DiagnosticsPanel
+          title="SEO interpretation"
+          subtitle="Current SEO contribution to the total intelligence read."
+          diagnostic={diagnostics.seo}
+        />
       </div>
 
-      <div className="ai-highlight">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-accent">Anitrya SEO read</span>
-          <span className="badge">
-            {intelligence.seoInsights[0]?.confidence ?? "medium"} confidence
-          </span>
-        </div>
-        <h2 className="mt-3 text-2xl font-semibold">
-          {intelligence.seoInsights[0]?.title ??
-            "Search evidence is connected, but no strong SEO-specific conclusion is dominant yet."}
-        </h2>
-        <p className="mt-2 max-w-4xl text-sm body-muted">
-          {intelligence.seoInsights[0]?.summary ??
-            "Continue syncing and allow additional windows to sharpen the signal."}
-        </p>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
-        <div className="card">
-          <div className="section-title">Connection</div>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="badge badge-success">Connected</span>
-            <span className="badge">{sites.length} discovered sites</span>
-            {lastRun ? (
-              <span className="badge">
-                Last sync: {lastRun.status} · {lastRun.rowsSynced} rows
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-5 flex gap-3">
-            <form action="/api/anitrya/gsc/discover" method="post">
-              <button className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                Discover Sites
-              </button>
-            </form>
-            <form action="/api/anitrya/gsc/sync" method="post">
-              <button className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                Run Sync
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="section-title">What the system is watching</div>
-          <div className="mt-4 space-y-3">
-            {(intelligence.seoInsights[0]?.watchNext ?? [
-              "CTR by high-impression page",
-              "Position shifts across top pages",
-              "Clicks by query cluster"
-            ]).map((item, index) => (
-              <div key={`${item}-${index}`} className="card-soft text-sm">
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
-        <div className="card">
-          <div className="section-title">SEO findings</div>
-          <div className="mt-5 insight-grid">
-            {intelligence.seoInsights.length === 0 ? (
-              <div className="card-soft text-sm body-muted">
-                No strong SEO-specific finding is available yet.
-              </div>
-            ) : (
-              intelligence.seoInsights.map((insight, index) => (
-                <div key={`${insight.title}-${index}`} className="insight-block">
-                  <div className="flex flex-wrap gap-2">
-                    <span className="badge badge-accent">SEO</span>
-                    <span className="badge">{insight.confidence} confidence</span>
-                  </div>
-                  <h3 className="mt-3 text-lg font-semibold">{insight.title}</h3>
-                  <p className="mt-2 text-sm body-muted">{insight.summary}</p>
-                  <div className="mt-4 text-sm font-medium">Why this matters</div>
-                  <p className="mt-2 text-sm body-muted">{insight.whyItMatters}</p>
-                  <div className="mt-4 text-sm font-medium">Next steps</div>
-                  <ul className="mt-2 space-y-1 text-sm body-muted">
-                    {insight.actions.map((action, actionIndex) => (
-                      <li key={`${action}-${actionIndex}`}>• {action}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="section-title">Discovered sites</div>
-          <div className="mt-4 overflow-hidden rounded-2xl">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Site</th>
-                  <th>Permission</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sites.map((site) => (
-                  <tr key={site.id}>
-                    <td>{site.siteUrl}</td>
-                    <td className="body-muted">{site.permissionLevel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+      <InsightStack
+        title="SEO findings"
+        subtitle="Structured search findings from the current evidence set."
+        items={findings}
+      />
+    </main>
   );
 }

@@ -1,162 +1,173 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { ensureWorkspaceForUser } from "@/lib/workspace";
-import { prisma } from "@/lib/prisma";
-import { getWorkspaceIntelligence } from "@/lib/intelligence";
+import { getProjectIntelligenceForRange } from "@/lib/intelligence";
+import { resolveDateRange } from "@/lib/intelligence/date-range";
+import {
+  DateRangeToolbar,
+  DiagnosticsPanel,
+} from "@/lib/intelligence/ui";
+import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
+import { PageHero } from "@/components/shared/PageHero";
+import { KpiStrip } from "@/components/shared/KpiStrip";
+import { EvidenceCountGrid } from "@/components/shared/EvidenceCountGrid";
+import { InsightStack } from "@/components/shared/InsightStack";
 
-export const dynamic = "force-dynamic";
+type PageProps = {
+  searchParams?: Promise<{
+    project?: string;
+    workspace?: string;
+    preset?: string;
+    from?: string;
+    to?: string;
+  }>;
+};
 
-export default async function BehaviorPage() {
-  const session = await getServerSession(authOptions);
+function safeDiagnostics(intelligence: any) {
+  return (
+    intelligence?.diagnostics ?? {
+      behavior: {
+        title: "Behavior",
+        summary:
+          "Behavior evidence is present but still too thin to support a stronger ranked on-site hypothesis.",
+        confidence: "low",
+        actions: [
+          "Review landing-page and source / medium rows for stronger quality or conversion gaps.",
+          "Deepen behavior evidence so stronger confirming signals can be ranked.",
+        ],
+      },
+    }
+  );
+}
 
-  if (!session?.user?.email || !session.user.id) {
-    return <div className="text-white">Authentication state is missing.</div>;
-  }
+function safeBehaviorFindings(intelligence: any) {
+  const findings = Array.isArray(intelligence?.behaviorFindings)
+    ? intelligence.behaviorFindings
+    : [];
 
-  const workspace = await ensureWorkspaceForUser({
-    userId: session.user.id,
-    email: session.user.email
+  return findings.map((finding: any, index: number) => ({
+    title: String(finding?.title ?? `Behavior finding ${index + 1}`),
+    body: String(finding?.body ?? finding?.summary ?? ""),
+    confidence: String(finding?.confidence ?? "low"),
+  }));
+}
+
+export default async function BehaviorPage({ searchParams }: PageProps) {
+  const params = (await searchParams) ?? {};
+
+  const selectedProject = await resolveSelectedProject({
+    workspaceId: params.workspace ?? null,
+    projectSlug: params.project ?? null,
   });
 
-  const [properties, lastRun, intelligence] = await Promise.all([
-    prisma.ga4Property.findMany({
-      where: { workspaceId: workspace.id },
-      orderBy: { displayName: "asc" }
-    }),
-    prisma.syncRun.findFirst({
-      where: {
-        workspaceId: workspace.id,
-        source: "GOOGLE_GA4"
-      },
-      orderBy: { startedAt: "desc" }
-    }),
-    getWorkspaceIntelligence(workspace.id)
-  ]);
+  const dateRange = resolveDateRange({
+    preset: params.preset,
+    from: params.from,
+    to: params.to,
+  });
+
+  const intelligence = (await getProjectIntelligenceForRange({
+    workspaceId: selectedProject?.workspaceId ?? params.workspace ?? null,
+    projectSlug: selectedProject?.slug ?? params.project ?? null,
+    preset: params.preset,
+    from: params.from,
+    to: params.to,
+  })) as any;
+
+  const project = intelligence?.project ?? selectedProject ?? null;
+  const diagnostics = safeDiagnostics(intelligence);
+  const evidence = intelligence?.evidence ?? {};
+  const landingRows = Array.isArray(evidence?.ga4Landings)
+    ? evidence.ga4Landings.length
+    : 0;
+  const sourceRows = Array.isArray(evidence?.ga4SourceRows)
+    ? evidence.ga4SourceRows.length
+    : 0;
+  const findings = safeBehaviorFindings(intelligence);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <div className="section-kicker">Behavior intelligence</div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Behavior</h1>
-        <p className="mt-3 max-w-4xl body-muted">
-          On-site performance, engagement quality, and acquisition integrity from
-          the synced GA4 layer.
-        </p>
+    <main className="space-y-8">
+      <DateRangeToolbar
+        basePath="/home/behavior"
+        projectSlug={selectedProject?.slug ?? params.project ?? null}
+        workspaceId={selectedProject?.workspaceId ?? params.workspace ?? null}
+        range={dateRange}
+      />
+
+      <PageHero
+        eyebrow="Anitrya intelligence"
+        title="Behavior evidence"
+        body="Landing-page and acquisition-quality interpretation built from normalized GA4 behavior evidence."
+        projectLabel={project?.name ?? "No project selected"}
+        projectSubtext={
+          project?.slug
+            ? `Slug: ${project.slug}`
+            : "Select a project to load behavior evidence."
+        }
+      />
+
+      <KpiStrip
+        items={[
+          {
+            label: "Landing rows",
+            value: landingRows,
+            context: "Page-level behavior evidence available in the current range",
+          },
+          {
+            label: "Source rows",
+            value: sourceRows,
+            context: "Acquisition-quality rows available in the current range",
+          },
+          {
+            label: "Entity findings",
+            value: findings.length,
+            context: "Structured behavior findings currently ranked",
+          },
+          {
+            label: "Confidence",
+            value: diagnostics.behavior.confidence,
+            context: "Current ranked confidence for behavior interpretation",
+          },
+        ]}
+      />
+
+      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+        <EvidenceCountGrid
+          title="Behavior evidence coverage"
+          subtitle="Coverage across landing quality and acquisition-quality interpretation."
+          cards={[
+            {
+              label: "Landing evidence",
+              value: landingRows,
+              body: "Page-level engagement and conversion-signal evidence used for behavior diagnosis.",
+            },
+            {
+              label: "Acquisition evidence",
+              value: sourceRows,
+              body: "Source / medium evidence used for traffic-quality and conversion-support interpretation.",
+            },
+            {
+              label: "Best next step",
+              value: "quality / conversion",
+              body: "Use landing and source concentration to isolate weak intent-to-performance alignment.",
+            },
+            {
+              label: "Readiness",
+              value: landingRows + sourceRows > 0 ? "present" : "thin",
+              body: "Indicates whether behavior evidence is deep enough for stronger ranking.",
+            },
+          ]}
+        />
+
+        <DiagnosticsPanel
+          title="Behavior interpretation"
+          subtitle="Current behavior contribution to the total intelligence read."
+          diagnostic={diagnostics.behavior}
+        />
       </div>
 
-      <div className="ai-highlight">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-accent">Anitrya behavior read</span>
-          <span className="badge">
-            {intelligence.behaviorInsights[0]?.confidence ?? "medium"} confidence
-          </span>
-        </div>
-        <h2 className="mt-3 text-2xl font-semibold">
-          {intelligence.behaviorInsights[0]?.title ??
-            "Behavior data is connected, but no strong behavior-specific conclusion is dominant yet."}
-        </h2>
-        <p className="mt-2 max-w-4xl text-sm body-muted">
-          {intelligence.behaviorInsights[0]?.summary ??
-            "Continue syncing and allow additional windows to sharpen the signal."}
-        </p>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
-        <div className="card">
-          <div className="section-title">Connection</div>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span className="badge badge-success">Connected</span>
-            <span className="badge">{properties.length} discovered properties</span>
-            {lastRun ? (
-              <span className="badge">
-                Last sync: {lastRun.status} · {lastRun.rowsSynced} rows
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-5 flex gap-3">
-            <form action="/api/anitrya/ga4/discover" method="post">
-              <button className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                Discover Properties
-              </button>
-            </form>
-            <form action="/api/anitrya/ga4/sync" method="post">
-              <button className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white">
-                Run Sync
-              </button>
-            </form>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="section-title">What the system is watching</div>
-          <div className="mt-4 space-y-3">
-            {(intelligence.behaviorInsights[0]?.watchNext ?? [
-              "Engagement by landing page",
-              "Users by source",
-              "Session quality on growth pages"
-            ]).map((item, index) => (
-              <div key={`${item}-${index}`} className="card-soft text-sm">
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
-        <div className="card">
-          <div className="section-title">Behavior findings</div>
-          <div className="mt-5 insight-grid">
-            {intelligence.behaviorInsights.length === 0 ? (
-              <div className="card-soft text-sm body-muted">
-                No strong behavior-specific finding is available yet.
-              </div>
-            ) : (
-              intelligence.behaviorInsights.map((insight, index) => (
-                <div key={`${insight.title}-${index}`} className="insight-block">
-                  <div className="flex flex-wrap gap-2">
-                    <span className="badge badge-accent">Behavior</span>
-                    <span className="badge">{insight.confidence} confidence</span>
-                  </div>
-                  <h3 className="mt-3 text-lg font-semibold">{insight.title}</h3>
-                  <p className="mt-2 text-sm body-muted">{insight.summary}</p>
-                  <div className="mt-4 text-sm font-medium">Why this matters</div>
-                  <p className="mt-2 text-sm body-muted">{insight.whyItMatters}</p>
-                  <div className="mt-4 text-sm font-medium">Next steps</div>
-                  <ul className="mt-2 space-y-1 text-sm body-muted">
-                    {insight.actions.map((action, actionIndex) => (
-                      <li key={`${action}-${actionIndex}`}>• {action}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="section-title">Discovered properties</div>
-          <div className="mt-4 overflow-hidden rounded-2xl">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Property</th>
-                  <th>Account</th>
-                </tr>
-              </thead>
-              <tbody>
-                {properties.map((property) => (
-                  <tr key={property.id}>
-                    <td>{property.displayName ?? property.propertyName}</td>
-                    <td className="body-muted">{property.accountName}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
+      <InsightStack
+        title="Behavior findings"
+        subtitle="Structured behavior findings from the current evidence set."
+        items={findings}
+      />
+    </main>
   );
 }

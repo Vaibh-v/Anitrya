@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 const items = [
   { href: "/home", label: "Overview" },
@@ -11,35 +11,44 @@ const items = [
   { href: "/home/intelligence", label: "Intelligence" }
 ];
 
+function withProject(href: string, project: string | null) {
+  if (!project) return href;
+  return `${href}?project=${encodeURIComponent(project)}`;
+}
+
 export function Sidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const project = searchParams.get("project");
 
   return (
-    <aside className="w-[250px] shrink-0 border-r border-white/5 px-5 py-6">
-      <div className="mb-10">
-        <div className="text-[24px] font-semibold tracking-tight text-white">
-          Anitrya
-        </div>
-        <div className="mt-1 text-sm body-muted">Analytics Intelligence</div>
+    <aside className="sidebar-shell">
+      <div className="sidebar-brand">
+        <Link href={withProject("/home", project)} className="sidebar-logo-link">
+          <div className="sidebar-logo">Anitrya</div>
+          <div className="sidebar-subtitle">Analytics Intelligence</div>
+        </Link>
       </div>
 
-      <nav className="space-y-2">
+      <nav className="sidebar-nav" aria-label="Primary">
         {items.map((item) => {
-          const active =
-            pathname === item.href ||
-            (item.href !== "/home" && pathname.startsWith(item.href));
+          const active = pathname === item.href;
 
           return (
             <Link
               key={item.href}
-              href={item.href}
-              className={`sidebar-link ${active ? "sidebar-link-active" : ""}`}
+              href={withProject(item.href, project)}
+              className={active ? "sidebar-link sidebar-link-active" : "sidebar-link"}
             >
-              {item.label}
+              <span>{item.label}</span>
             </Link>
           );
         })}
       </nav>
+
+      <div className="sidebar-footer">
+        <div className="sidebar-orb">N</div>
+      </div>
     </aside>
   );
 }

@@ -1,0 +1,15 @@
+{
+  "records": [
+    {
+      "id": "cmn7wu7mp00018je27rkwtcnn::zt::1774968871612",
+      "createdAt": "2026-03-31T14:54:31.612Z",
+      "workspaceId": "cmn7wu7mp00018je27rkwtcnn",
+      "projectSlug": "zt",
+      "spreadsheetId": "1oYO1AvsuONsLpOA9zjA8nj-olUmkvcGdaByvPyF1MfM",
+      "from": "2026-02-01",
+      "to": "2026-03-25",
+      "status": "failed",
+      "message": "GOOGLE_SERVICE_ACCOUNT_NOT_CONFIGURED"
+    }
+  ]
+}

@@ -1,124 +1,189 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { ensureWorkspaceForUser } from "@/lib/workspace";
-import { getWorkspaceIntelligence } from "@/lib/intelligence";
+import { getProjectIntelligenceForRange } from "@/lib/intelligence";
+import { resolveDateRange } from "@/lib/intelligence/date-range";
+import { buildFutureReadinessPanelData } from "@/lib/intelligence/future-readiness";
+import {
+  DateRangeToolbar,
+  DiagnosticsPanel,
+} from "@/lib/intelligence/ui";
+import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
+import { PageHero } from "@/components/shared/PageHero";
+import { KpiStrip } from "@/components/shared/KpiStrip";
+import { EvidenceCountGrid } from "@/components/shared/EvidenceCountGrid";
+import { SectionLinkRow } from "@/components/shared/SectionLinkRow";
+import { ReadinessBanner } from "@/components/shared/ReadinessBanner";
 
-export const dynamic = "force-dynamic";
+type PageProps = {
+  searchParams?: Promise<{
+    project?: string;
+    workspace?: string;
+    preset?: string;
+    from?: string;
+    to?: string;
+  }>;
+};
 
-function deltaLabel(value: number | null) {
-  if (value === null) return "Insufficient history";
-  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+function safeDiagnostics(intelligence: any) {
+  return (
+    intelligence?.diagnostics ?? {
+      overview: {
+        title: "Overview",
+        summary:
+          "Evidence-backed diagnostic summary is not yet available for this project and date range.",
+        confidence: "low",
+        actions: [
+          "Run entity sync to populate evidence rows.",
+          "Deepen synced range so stronger project signals can be ranked.",
+        ],
+      },
+    }
+  );
 }
 
-export default async function HomePage() {
-  const session = await getServerSession(authOptions);
+export default async function HomePage({ searchParams }: PageProps) {
+  const params = (await searchParams) ?? {};
 
-  if (!session?.user?.email || !session.user.id) {
-    return <div className="text-white">Authentication state is missing.</div>;
-  }
-
-  const workspace = await ensureWorkspaceForUser({
-    userId: session.user.id,
-    email: session.user.email
+  const selectedProject = await resolveSelectedProject({
+    workspaceId: params.workspace ?? null,
+    projectSlug: params.project ?? null,
   });
 
-  const intelligence = await getWorkspaceIntelligence(workspace.id);
+  const dateRange = resolveDateRange({
+    preset: params.preset,
+    from: params.from,
+    to: params.to,
+  });
+
+  const intelligence = (await getProjectIntelligenceForRange({
+    workspaceId: selectedProject?.workspaceId ?? params.workspace ?? null,
+    projectSlug: selectedProject?.slug ?? params.project ?? null,
+    preset: params.preset,
+    from: params.from,
+    to: params.to,
+  })) as any;
+
+  const project = intelligence?.project ?? selectedProject ?? null;
+  const diagnostics = safeDiagnostics(intelligence);
+  const evidence = intelligence?.evidence ?? {};
+  const futureReadiness = buildFutureReadinessPanelData();
+
+  const queryRows = Array.isArray(evidence?.gscQueryRows)
+    ? evidence.gscQueryRows.length
+    : 0;
+  const pageRows = Array.isArray(evidence?.gscPageRows)
+    ? evidence.gscPageRows.length
+    : 0;
+  const landingRows = Array.isArray(evidence?.ga4Landings)
+    ? evidence.ga4Landings.length
+    : 0;
+  const sourceRows = Array.isArray(evidence?.ga4SourceRows)
+    ? evidence.ga4SourceRows.length
+    : 0;
 
   return (
-    <div className="space-y-8">
-      <div>
-        <div className="section-kicker">Workspace overview</div>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Overview</h1>
-        <p className="mt-3 max-w-4xl body-muted">
-          High-level state across connected sources, current directional movement,
-          and the most important issue the system sees right now.
-        </p>
+    <main className="space-y-8">
+      <DateRangeToolbar
+        basePath="/home"
+        projectSlug={selectedProject?.slug ?? params.project ?? null}
+        workspaceId={selectedProject?.workspaceId ?? params.workspace ?? null}
+        range={dateRange}
+      />
+
+      <PageHero
+        eyebrow="Anitrya intelligence"
+        title="Project overview"
+        body="Evidence-backed overview across traffic, search visibility, behavior quality, and future expansion readiness."
+        projectLabel={project?.name ?? "No project selected"}
+        projectSubtext={
+          project?.slug
+            ? `Slug: ${project.slug}`
+            : "Select a project to load project-scoped evidence."
+        }
+      />
+
+      <KpiStrip
+        items={[
+          {
+            label: "GA4 source rows",
+            value: sourceRows,
+            context: "Traffic-source evidence available in the current range",
+          },
+          {
+            label: "GA4 landing rows",
+            value: landingRows,
+            context: "Landing-page quality evidence currently available",
+          },
+          {
+            label: "GSC query rows",
+            value: queryRows,
+            context: "Search-demand rows captured for the selected range",
+          },
+          {
+            label: "GSC page rows",
+            value: pageRows,
+            context: "Search page-evidence rows available for diagnostics",
+          },
+        ]}
+      />
+
+      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+        <EvidenceCountGrid
+          title="Overview evidence concentration"
+          subtitle="High-level evidence coverage across the currently connected sources."
+          cards={[
+            {
+              label: "Search demand",
+              value: queryRows,
+              body: "Query-level GSC evidence available for ranked search interpretation.",
+            },
+            {
+              label: "Search pages",
+              value: pageRows,
+              body: "Page-level GSC evidence available for visibility and landing alignment review.",
+            },
+            {
+              label: "Landing quality",
+              value: landingRows,
+              body: "GA4 landing rows available for page-level quality interpretation.",
+            },
+            {
+              label: "Acquisition mix",
+              value: sourceRows,
+              body: "GA4 source / medium rows available for traffic-quality interpretation.",
+            },
+          ]}
+        />
+
+        <DiagnosticsPanel
+          title="Overview interpretation"
+          subtitle="Evidence-backed read of the current project condition."
+          diagnostic={diagnostics.overview}
+        />
       </div>
 
-      <div className="ai-highlight">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge badge-accent">Top system read</span>
-          <span className="badge">{intelligence.executive.confidence} confidence</span>
-        </div>
-        <h2 className="mt-3 text-2xl font-semibold">{intelligence.executive.headline}</h2>
-        <p className="mt-2 max-w-4xl text-sm body-muted">
-          {intelligence.executive.narrative}
-        </p>
-      </div>
+      <ReadinessBanner
+        title="Future market context"
+        subtitle="Preserved intelligence layers for Google Business Profile, Google Ads, Google Trends, and competitor context."
+        cards={futureReadiness.cards}
+      />
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-        {intelligence.overviewCards.map((card) => (
-          <div key={card.label} className="metric-card">
-            <div className="section-title">{card.label}</div>
-            <div className="metric-value mt-2">{card.value}</div>
-            <div className="mt-3">
-              <span className="badge">{deltaLabel(card.delta)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <div className="card">
-          <div className="section-title">Connected source posture</div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <div className="card-soft">
-              <div className="font-medium">Google Search Console</div>
-              <div className="mt-3 text-sm body-muted">
-                Connected · {intelligence.coverage.gsc.sites} sites
-              </div>
-              <div className="mt-3 signal-bar">
-                <span style={{ width: `${Math.min(100, intelligence.coverage.gsc.rows / 2)}%` }} />
-              </div>
-            </div>
-
-            <div className="card-soft">
-              <div className="font-medium">Google Analytics 4</div>
-              <div className="mt-3 text-sm body-muted">
-                Connected · {intelligence.coverage.ga4.properties} properties
-              </div>
-              <div className="mt-3 signal-bar">
-                <span style={{ width: `${Math.min(100, intelligence.coverage.ga4.rows)}%` }} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="section-title">Priority actions</div>
-          <div className="mt-5 space-y-3">
-            {intelligence.executive.topActions.map((action, index) => (
-              <div key={`${action}-${index}`} className="card-soft text-sm">
-                {action}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="section-title">Where to go next</div>
-        <div className="mt-4 grid gap-4 xl:grid-cols-3">
-          <div className="card-soft">
-            <div className="font-medium">SEO</div>
-            <p className="mt-2 text-sm body-muted">
-              Review search-side interpretation, result capture pressure, and visibility risk.
-            </p>
-          </div>
-          <div className="card-soft">
-            <div className="font-medium">Behavior</div>
-            <p className="mt-2 text-sm body-muted">
-              Review engagement quality, acquisition integrity, and on-site movement.
-            </p>
-          </div>
-          <div className="card-soft">
-            <div className="font-medium">Intelligence</div>
-            <p className="mt-2 text-sm body-muted">
-              Review Anitrya’s synthesized reading across all currently connected evidence.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+      <SectionLinkRow
+        title="Evidence-linked navigation"
+        subtitle="Move from overview into deeper evidence layers."
+        links={[
+          {
+            label: "Open SEO drilldown",
+            href: `/home/seo?project=${selectedProject?.slug ?? ""}`,
+          },
+          {
+            label: "Open behavior drilldown",
+            href: `/home/behavior?project=${selectedProject?.slug ?? ""}`,
+          },
+          {
+            label: "Open intelligence read",
+            href: `/home/intelligence?project=${selectedProject?.slug ?? ""}`,
+          },
+        ]}
+      />
+    </main>
   );
 }

@@ -9,15 +9,23 @@ export const GSC_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/webmasters.readonly"
+  "https://www.googleapis.com/auth/webmasters.readonly",
 ].join(" ");
 
 export const GA4_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/analytics.readonly"
+  "https://www.googleapis.com/auth/analytics.readonly",
 ].join(" ");
+
+const offlineParams = (scope: string) => ({
+  scope,
+  access_type: "offline",
+  prompt: "consent",
+  response_type: "code",
+  include_granted_scopes: "true",
+});
 
 export const authProviders = [
   GoogleProvider({
@@ -28,9 +36,10 @@ export const authProviders = [
     authorization: {
       params: {
         scope: LOGIN_SCOPES,
-        prompt: "select_account"
-      }
-    }
+        prompt: "select_account",
+        response_type: "code",
+      },
+    },
   }),
   GoogleProvider({
     id: "google-gsc",
@@ -38,13 +47,8 @@ export const authProviders = [
     clientSecret: GOOGLE_CLIENT_SECRET,
     allowDangerousEmailAccountLinking: true,
     authorization: {
-      params: {
-        scope: GSC_SCOPES,
-        access_type: "offline",
-        prompt: "consent",
-        include_granted_scopes: "true"
-      }
-    }
+      params: offlineParams(GSC_SCOPES),
+    },
   }),
   GoogleProvider({
     id: "google-ga4",
@@ -52,12 +56,7 @@ export const authProviders = [
     clientSecret: GOOGLE_CLIENT_SECRET,
     allowDangerousEmailAccountLinking: true,
     authorization: {
-      params: {
-        scope: GA4_SCOPES,
-        access_type: "offline",
-        prompt: "consent",
-        include_granted_scopes: "true"
-      }
-    }
-  })
+      params: offlineParams(GA4_SCOPES),
+    },
+  }),
 ];

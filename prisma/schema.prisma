@@ -17,6 +17,10 @@ enum Role {
 enum IntegrationProvider {
   GOOGLE_GSC
   GOOGLE_GA4
+  GOOGLE_ADS
+  GOOGLE_GBP
+  GOOGLE_TRENDS
+  META_AD_LIBRARY
   SEMRUSH
   AHREFS
   BIRDEYE
@@ -25,6 +29,10 @@ enum IntegrationProvider {
 enum SyncSource {
   GOOGLE_GSC
   GOOGLE_GA4
+  GOOGLE_ADS
+  GOOGLE_GBP
+  GOOGLE_TRENDS
+  META_AD_LIBRARY
   SEMRUSH
   AHREFS
   BIRDEYE
@@ -99,15 +107,19 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  tokens      IntegrationToken[]
-  syncRuns    SyncRun[]
-  insights    Insight[]
-  gscSites    GscSite[]
-  ga4Props    Ga4Property[]
-  gscMetrics  GscDailyMetric[]
-  ga4Metrics  Ga4DailyMetric[]
-  projects    Project[]
+  memberships       Membership[]
+  tokens            IntegrationToken[]
+  syncRuns          SyncRun[]
+  insights          Insight[]
+  gscSites          GscSite[]
+  ga4Props          Ga4Property[]
+  gscMetrics        GscDailyMetric[]
+  gscQueryMetrics   GscQueryMetric[]
+  gscPageMetrics    GscPageMetric[]
+  ga4Metrics        Ga4DailyMetric[]
+  ga4LandingMetrics Ga4LandingPageMetric[]
+  ga4SourceMetrics  Ga4SourceMediumMetric[]
+  projects          Project[]
 }
 
 model Membership {
@@ -185,8 +197,11 @@ model GscSite {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  metrics   GscDailyMetric[]
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  metrics      GscDailyMetric[]
+  queryMetrics GscQueryMetric[]
+  pageMetrics  GscPageMetric[]
+  projects     Project[]
 
   @@unique([workspaceId, siteUrl])
 }
@@ -210,6 +225,52 @@ model GscDailyMetric {
   @@index([workspaceId, date])
 }
 
+model GscQueryMetric {
+  id          String   @id @default(cuid())
+  workspaceId String
+  siteId      String
+  date        DateTime
+  query       String
+  page        String
+  clicks      Float
+  impressions Float
+  ctr         Float
+  position    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  site      GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, date, query, page])
+  @@index([workspaceId, date])
+  @@index([siteId, date])
+  @@index([siteId, query])
+  @@index([siteId, page])
+}
+
+model GscPageMetric {
+  id          String   @id @default(cuid())
+  workspaceId String
+  siteId      String
+  date        DateTime
+  page        String
+  clicks      Float
+  impressions Float
+  ctr         Float
+  position    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  site      GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([siteId, date, page])
+  @@index([workspaceId, date])
+  @@index([siteId, date])
+  @@index([siteId, page])
+}
+
 model Ga4Property {
   id           String   @id @default(cuid())
   workspaceId  String
@@ -219,8 +280,11 @@ model Ga4Property {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  metrics   Ga4DailyMetric[]
+  workspace      Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  metrics        Ga4DailyMetric[]
+  landingMetrics Ga4LandingPageMetric[]
+  sourceMetrics  Ga4SourceMediumMetric[]
+  projects       Project[]
 
   @@unique([workspaceId, propertyName])
 }
@@ -244,15 +308,65 @@ model Ga4DailyMetric {
   @@index([workspaceId, date])
 }
 
+model Ga4LandingPageMetric {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  propertyId     String
+  date           DateTime
+  page           String
+  sessions       Float
+  users          Float
+  conversions    Float
+  engagementRate Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  property  Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, date, page])
+  @@index([workspaceId, date])
+  @@index([propertyId, date])
+  @@index([propertyId, page])
+}
+
+model Ga4SourceMediumMetric {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  propertyId     String
+  date           DateTime
+  sourceMedium   String
+  sessions       Float
+  users          Float
+  conversions    Float
+  engagementRate Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  property  Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, date, sourceMedium])
+  @@index([workspaceId, date])
+  @@index([propertyId, date])
+  @@index([propertyId, sourceMedium])
+}
+
 model Project {
-  id            String   @id @default(cuid())
-  name          String
-  workspaceId   String
-  createdAt     DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  slug        String
+  workspaceId String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   ga4PropertyId String?
   gscSiteId     String?
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ga4Property Ga4Property? @relation(fields: [ga4PropertyId], references: [id], onDelete: SetNull)
+  gscSite     GscSite?     @relation(fields: [gscSiteId], references: [id], onDelete: SetNull)
 
+  @@unique([workspaceId, slug])
   @@index([workspaceId])
 }
