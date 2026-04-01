@@ -3,23 +3,21 @@ import { resolveDateRange } from "@/lib/intelligence/date-range";
 import { DateRangeToolbar } from "@/lib/intelligence/ui";
 import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
 import {
-  buildSeoConnectedSources,
-  buildSeoReadinessCards,
-} from "@/lib/intelligence/section-readiness";
-import {
   buildBehaviorHref,
   buildIntelligenceHref,
-  buildOverviewHref,
+  buildSeoHref,
 } from "@/lib/intelligence/navigation-links";
+import {
+  buildOverviewConnectedSources,
+  buildOverviewReadinessCards,
+} from "@/lib/intelligence/section-readiness";
 import { EvidencePageHero } from "@/components/shared/EvidencePageHero";
 import { ProjectMappingHealthPanel } from "@/components/shared/ProjectMappingHealthPanel";
 import { ProjectSyncReadinessBanner } from "@/components/shared/ProjectSyncReadinessBanner";
 import { EvidenceLinkedNavPanel } from "@/components/shared/EvidenceLinkedNavPanel";
 import { EvidenceCoveragePanel } from "@/components/shared/EvidenceCoveragePanel";
 import { SectionInterpretationPanel } from "@/components/shared/SectionInterpretationPanel";
-import { SectionFindingsPanel } from "@/components/shared/SectionFindingsPanel";
 import { SectionStatCards } from "@/components/shared/SectionStatCards";
-import { SectionUnlockPanel } from "@/components/shared/SectionUnlockPanel";
 import { ReadinessMatrixPanel } from "@/components/shared/ReadinessMatrixPanel";
 import { ConnectedSourcesPanel } from "@/components/shared/ConnectedSourcesPanel";
 import { SectionActionChecklist } from "@/components/shared/SectionActionChecklist";
@@ -35,7 +33,7 @@ type PageProps = {
   }>;
 };
 
-export default async function SeoPage({ searchParams }: PageProps) {
+export default async function OverviewPage({ searchParams }: PageProps) {
   const params = (await searchParams) ?? {};
   const session = await requireSession();
 
@@ -67,7 +65,7 @@ export default async function SeoPage({ searchParams }: PageProps) {
   return (
     <main className="space-y-8">
       <DateRangeToolbar
-        basePath="/home/seo"
+        basePath="/home/overview"
         projectSlug={projectId}
         workspaceId={workspaceId}
         range={dateRange}
@@ -75,26 +73,26 @@ export default async function SeoPage({ searchParams }: PageProps) {
 
       <EvidencePageHero
         eyebrow="Anitrya Intelligence"
-        title="SEO evidence"
-        description="Search-demand and search-page interpretation built from normalized Search Console evidence."
+        title="Project overview"
+        description="Evidence-backed overview across traffic, search visibility, behavior quality, and future expansion readiness."
         projectLabel={projectLabel}
         projectId={projectId}
       />
 
       <ProjectMappingHealthPanel
-        description="SEO accuracy depends on the active project remaining mapped to the correct GSC site and preserving the same project context as Intelligence."
+        description="Overview accuracy depends on the active project remaining mapped to one GA4 property and one GSC site."
         items={[
           {
             label: "Project",
             value: projectLabel || "unresolved",
             tone: projectLabel ? "ready" : "missing",
-            context: "Current business context selected for the SEO read.",
+            context: "Current business context selected for the overview read.",
           },
           {
             label: "Project id",
             value: projectId || "unresolved",
             tone: projectId ? "ready" : "missing",
-            context: "The project slug currently passed through the SEO layer.",
+            context: "The project slug currently passed through the overview layer.",
           },
           {
             label: "Workspace",
@@ -106,147 +104,155 @@ export default async function SeoPage({ searchParams }: PageProps) {
             label: "Date range",
             value: `${dateRange.from} → ${dateRange.to}`,
             tone: "ready",
-            context: "The current evidence window used to evaluate search coverage.",
+            context: "The current evidence window used to evaluate project coverage.",
           },
         ]}
       />
 
       <ReadinessMatrixPanel
-        title="SEO readiness"
-        description="A shared view of what is structurally ready versus still blocked across the SEO layer."
-        items={buildSeoReadinessCards()}
+        title="Overview readiness"
+        description="A shared view of what is structurally ready versus still blocked across the overview layer."
+        items={buildOverviewReadinessCards()}
       />
 
       <SectionStatCards
         items={[
           {
-            label: "Query rows",
+            label: "GA4 source rows",
             value: 0,
-            context: "Available query-level evidence for the current range.",
+            context: "Traffic-source evidence available in the current range.",
           },
           {
-            label: "Page rows",
+            label: "GA4 landing rows",
             value: 0,
-            context: "Available page-level evidence for the current range.",
+            context: "Landing-page quality evidence currently available.",
           },
           {
-            label: "Entity findings",
+            label: "GSC query rows",
             value: 0,
-            context: "Structured SEO findings currently ranked.",
+            context: "Search-demand rows captured for the selected range.",
           },
           {
-            label: "Confidence",
-            value: "low",
-            context: "Current ranked confidence for SEO interpretation.",
+            label: "GSC page rows",
+            value: 0,
+            context: "Search page-evidence rows available for diagnostics.",
           },
         ]}
       />
 
       <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
         <EvidenceCoveragePanel
-          title="SEO evidence coverage"
-          description="Coverage across demand capture and page-level search visibility."
+          title="Overview evidence concentration"
+          description="High-level evidence coverage across the currently connected sources."
           cards={[
             {
-              label: "Query evidence",
+              label: "Search demand",
               value: 0,
               context:
-                "Search demand capture evidence used for topic, CTR, and impression interpretation.",
+                "Query-level GSC evidence available for ranked search interpretation.",
             },
             {
-              label: "Page evidence",
+              label: "Search pages",
               value: 0,
               context:
-                "Page-level visibility evidence used for ranking and page-priority interpretation.",
+                "Page-level GSC evidence available for visibility and landing alignment review.",
             },
             {
-              label: "Best next step",
-              value: "CTR / rank focus",
+              label: "Landing quality",
+              value: 0,
               context:
-                "Use query and page concentration to find stronger confirming patterns.",
+                "GA4 landing rows available for page-level quality interpretation.",
             },
             {
-              label: "Readiness",
-              value: "thin",
+              label: "Acquisition mix",
+              value: 0,
               context:
-                "Indicates whether SEO evidence is deep enough for stronger ranking.",
+                "GA4 source / medium rows available for traffic-quality interpretation.",
             },
           ]}
         />
 
         <SectionInterpretationPanel
-          title="SEO interpretation"
-          description="Current SEO contribution to the total intelligence read."
+          title="Overview interpretation"
+          description="Evidence-backed read of the current project condition."
           emptyTitle="No diagnostics available"
           emptyDescription="Evidence is still limited for this section. Run sync and review connected sources."
         />
       </div>
 
-      <SectionFindingsPanel
-        title="SEO findings"
-        description="Structured search findings from the current evidence set."
-        emptyTitle="No findings yet"
-        emptyDescription="Structured search findings will appear here as entity-level evidence deepens."
-      />
-
       <ConnectedSourcesPanel
         title="Connected sources"
-        description="Current status of the sources that should eventually power stronger SEO interpretation."
-        items={buildSeoConnectedSources()}
+        description="Current status of the sources that should eventually power stronger overview interpretation."
+        items={buildOverviewConnectedSources()}
       />
 
       <ProjectSyncReadinessBanner
-        summary="The SEO section is ready to accept normalized Search Console evidence, but query and page rows are still missing in the current read."
+        summary="The overview layer is structured correctly, but stronger diagnostic coverage depends on normalized GA4 and GSC evidence becoming available."
         statuses={[
-          { label: "Query evidence missing", tone: "missing" },
-          { label: "Page evidence missing", tone: "missing" },
-          { label: "SEO section ready", tone: "partial" },
-          { label: "Intelligence linked", tone: "ready" },
+          { label: "GA4 missing", tone: "missing" },
+          { label: "GSC missing", tone: "missing" },
+          { label: "Overview ready", tone: "partial" },
+          { label: "Future sources preserved", tone: "ready" },
         ]}
       />
 
-      <SectionUnlockPanel
-        title="What unlocks stronger SEO interpretation"
-        description="SEO ranking quality improves only when normalized Search Console evidence is materially available."
-        unlocks={[
-          "Hydrate normalized query rows into search-demand interpretation.",
-          "Hydrate normalized page rows into page-priority interpretation.",
-          "Promote SEO contradiction reads only after query and page evidence confirm the same pattern.",
+      <SectionStatCards
+        items={[
+          {
+            label: "Future evidence layers",
+            value: 3,
+            context: "Preserved sources ready for implementation.",
+          },
+          {
+            label: "Connected now",
+            value: 0,
+            context: "Future-source layers already contributing.",
+          },
+          {
+            label: "Preserved next",
+            value: 3,
+            context: "Sources held in architecture and ready to unlock.",
+          },
+          {
+            label: "Known blockers",
+            value: 6,
+            context: "Visible blockers that still need implementation work.",
+          },
         ]}
       />
 
       <SectionActionChecklist
-        title="SEO next actions"
-        description="The fastest path to stronger SEO interpretation is correct project mapping plus fully hydrated GSC evidence."
+        title="Overview next actions"
+        description="The fastest path to a stronger overview read is tighter project mapping plus deeper normalized evidence."
         actions={[
-          "Confirm the active project still maps to the correct Search Console property.",
-          "Run sync after mapping is confirmed so query and page rows can hydrate.",
-          "Validate that query and page evidence point to the same ranking pattern before promotion.",
-          "Re-check the intelligence read after GSC evidence becomes materially available.",
+          "Confirm the active project still maps to the correct GA4 property.",
+          "Confirm the active project still maps to the correct GSC site.",
+          "Run sync after mapping is confirmed so overview rows can hydrate cleanly.",
+          "Re-check overview interpretation only after search and traffic evidence are materially available.",
         ]}
       />
 
       <EvidenceLinkedNavPanel
         title="Evidence-linked navigation"
-        description="Move from SEO into adjacent evidence layers."
+        description="Move from overview into deeper evidence layers."
         items={[
           {
-            label: "Open overview drilldown",
-            href: buildOverviewHref(navContext),
+            label: "Open SEO drilldown",
+            href: buildSeoHref(navContext),
             description:
-              "Review the project-wide concentration of search, landing, and acquisition evidence.",
+              "Inspect query and page evidence used for ranked search interpretation.",
           },
           {
             label: "Open behavior drilldown",
             href: buildBehaviorHref(navContext),
             description:
-              "Inspect landing and acquisition-quality evidence that should align with search intent.",
+              "Inspect landing and acquisition-quality evidence used for behavioral reads.",
           },
           {
             label: "Open intelligence read",
             href: buildIntelligenceHref(navContext),
             description:
-              "Review command center, hypotheses, outcomes, and execution intelligence.",
+              "Review command center, hypotheses, outcomes, and execution memory.",
           },
         ]}
       />

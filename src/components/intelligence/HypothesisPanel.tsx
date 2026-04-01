@@ -75,74 +75,78 @@ export function HypothesisPanel({ projectId }: { projectId: string }) {
       </div>
 
       <div className="mt-4 space-y-4">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="rounded-xl border border-white/10 bg-black/16 p-4"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-medium text-white">{item.title}</div>
-                <div className="mt-2 text-sm leading-6 text-white/60">
-                  {item.summary}
-                </div>
-                {item.learning?.scoreAdjustment !== 0 ? (
-                  <div className="mt-2 text-xs text-cyan-300/70">
-                    Learning impact: {item.learning.scoreAdjustment > 0 ? "+" : ""}
-                    {item.learning.scoreAdjustment} • reliability {item.learning.reliabilityLabel}
+        {items.map((item) => {
+          const learning = item.learning;
+
+          return (
+            <div
+              key={item.id}
+              className="rounded-xl border border-white/10 bg-black/16 p-4"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-sm font-medium text-white">{item.title}</div>
+                  <div className="mt-2 text-sm leading-6 text-white/60">
+                    {item.summary}
                   </div>
-                ) : (
-                  <div className="mt-2 text-xs text-white/40">
-                    No material learning adjustment has been applied yet.
+                  {learning && learning.scoreAdjustment !== 0 ? (
+                    <div className="mt-2 text-xs text-cyan-300/70">
+                      Learning impact: {learning.scoreAdjustment > 0 ? "+" : ""}
+                      {learning.scoreAdjustment} • reliability {learning.reliabilityLabel}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-xs text-white/40">
+                      No material learning adjustment has been applied yet.
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-400/[0.08] px-2.5 py-1 text-xs text-cyan-100">
+                  {item.confidence} • {item.score}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 xl:grid-cols-3">
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
+                    Evidence
                   </div>
-                )}
-              </div>
-
-              <div className="rounded-full border border-cyan-400/20 bg-cyan-400/[0.08] px-2.5 py-1 text-xs text-cyan-100">
-                {item.confidence} • {item.score}
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-4 xl:grid-cols-3">
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
-                  Evidence
+                  <div className="mt-3 space-y-2">
+                    {item.evidence.map((evidence, index) => (
+                      <div key={index} className="text-xs text-white/60">
+                        {evidence}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-3 space-y-2">
-                  {item.evidence.map((evidence, index) => (
-                    <div key={index} className="text-xs text-white/60">
-                      {evidence}
-                    </div>
-                  ))}
-                </div>
-              </div>
 
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
-                  Actions
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
+                    Actions
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {item.actions.map((action, index) => (
+                      <div key={index} className="text-xs text-white/60">
+                        {action}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-3 space-y-2">
-                  {item.actions.map((action, index) => (
-                    <div key={index} className="text-xs text-white/60">
-                      {action}
-                    </div>
-                  ))}
+
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
+                    Next step
+                  </div>
+                  <div className="mt-3 text-xs text-white/60">{item.nextStep}</div>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
-                  Next step
-                </div>
-                <div className="mt-3 text-xs text-white/60">{item.nextStep}</div>
+              <div className="mt-4 text-xs text-white/40">
+                Based on hypothesis category: {item.category}
               </div>
             </div>
-
-            <div className="mt-4 text-xs text-white/40">
-              Based on hypothesis category: {item.category}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
