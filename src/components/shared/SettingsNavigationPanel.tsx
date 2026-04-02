@@ -24,7 +24,7 @@ export function SettingsNavigationPanel({
       <div className="text-2xl font-semibold text-white">{title}</div>
       <div className="mt-2 text-sm leading-6 text-white/60">{description}</div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {items.map((item) => (
           <Link
             key={item.href}

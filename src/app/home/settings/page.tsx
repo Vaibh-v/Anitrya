@@ -1,5 +1,7 @@
+import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { resolveDateRange } from "@/lib/intelligence/date-range";
+import { buildFutureReadinessPanelData } from "@/lib/intelligence/future-readiness";
 import { DateRangeToolbar } from "@/lib/intelligence/ui";
 import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
 import {
@@ -8,18 +10,20 @@ import {
   buildOverviewHref,
   buildSeoHref,
 } from "@/lib/intelligence/navigation-links";
-import {
-  buildSettingsActionChecklist,
-  buildSettingsHealthStats,
-  buildSettingsIntegrationItems,
-} from "@/lib/intelligence/integration-health";
+import { getSyncStatusSummary } from "@/lib/sync/sync-status-store";
+import { EntitySyncPanel } from "@/components/settings/EntitySyncPanel";
+import { CustomerSheetExportPanel } from "@/components/settings/CustomerSheetExportPanel";
+import { ExpansionReadinessSection } from "@/components/settings/ExpansionReadinessSection";
+import { SyncStatusPanel } from "@/components/settings/SyncStatusPanel";
+import { IntegrationCatalogPanel } from "@/components/settings/IntegrationCatalogPanel";
 import { SettingsSectionHero } from "@/components/shared/SettingsSectionHero";
 import { ProjectMappingHealthPanel } from "@/components/shared/ProjectMappingHealthPanel";
 import { SettingsHealthPanel } from "@/components/shared/SettingsHealthPanel";
-import { IntegrationStatusPanel } from "@/components/shared/IntegrationStatusPanel";
 import { ProjectSyncReadinessBanner } from "@/components/shared/ProjectSyncReadinessBanner";
 import { SectionActionChecklist } from "@/components/shared/SectionActionChecklist";
 import { SettingsNavigationPanel } from "@/components/shared/SettingsNavigationPanel";
+import { RecentSyncRunsTable } from "../../../components/settings/RecentSyncRunsTable";
+import { SettingsSystemRulesPanel } from "../../../components/settings/SettingsSystemRulesPanel";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -49,12 +53,61 @@ export default async function SettingsPage({ searchParams }: PageProps) {
     to: params.to,
   });
 
-  const projectId = selectedProject.projectId;
+  const futureReadiness = buildFutureReadinessPanelData();
+
   const projectLabel = selectedProject.displayName;
+  const projectId = selectedProject.projectId;
+  const hasProject = selectedProject.hasProject;
   const workspaceId = session.user?.workspaceId ?? params.workspace ?? null;
 
+  const syncRuns =
+    workspaceId
+      ? await prisma.syncRun.findMany({
+          where: { workspaceId },
+          orderBy: { startedAt: "desc" },
+          take: 16,
+        })
+      : [];
+
+  const syncStatus =
+    workspaceId && hasProject
+      ? await getSyncStatusSummary({
+          workspaceId,
+          projectSlug: projectId,
+        })
+      : {
+          currentState: "idle" as const,
+          latestRun: null,
+          recentRuns: [],
+        };
+
+  const settingsHealthStats = [
+    {
+      label: "Connected now",
+      value: hasProject ? 1 : 0,
+      context: "Project-scoped operational controls currently resolved in Settings.",
+    },
+    {
+      label: "Preserved next",
+      value: 7,
+      context: "Future integrations already preserved in architecture.",
+    },
+    {
+      label: "Recent sync runs",
+      value: syncRuns.length,
+      context: "Operational execution records currently visible in this workspace.",
+    },
+    {
+      label: "Customer export",
+      value: hasProject ? "ready" : "blocked",
+      context: hasProject
+        ? "Customer sheet export surface is available for the selected project."
+        : "Resolve a valid project context to enable export safely.",
+    },
+  ];
+
   const navContext = {
-    projectId,
+    projectId: hasProject ? projectId : "default-project",
     workspaceId,
     preset: params.preset,
     from: params.from,
@@ -65,16 +118,16 @@ export default async function SettingsPage({ searchParams }: PageProps) {
     <main className="space-y-8">
       <DateRangeToolbar
         basePath="/home/settings"
-        projectSlug={projectId}
+        projectSlug={hasProject ? projectId : null}
         workspaceId={workspaceId}
         range={dateRange}
       />
 
       <SettingsSectionHero
         title="Settings"
-        description="Control project mapping, sync readiness, integration health, and the operating conditions that determine whether evidence can hydrate correctly across the product."
+        description="Integration status, sync control, operational visibility, customer-sheet export, and expansion readiness."
         projectLabel={projectLabel}
-        projectId={projectId}
+        projectId={hasProject ? projectId : "unresolved"}
       />
 
       <ProjectMappingHealthPanel
@@ -83,13 +136,13 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           {
             label: "Project",
             value: projectLabel || "unresolved",
-            tone: projectLabel ? "ready" : "missing",
+            tone: hasProject ? "ready" : "missing",
             context: "Current business context selected for settings and sync control.",
           },
           {
             label: "Project id",
-            value: projectId || "unresolved",
-            tone: projectId ? "ready" : "missing",
+            value: hasProject ? projectId : "unresolved",
+            tone: hasProject ? "ready" : "missing",
             context: "The project slug currently passed through the settings layer.",
           },
           {
@@ -109,31 +162,79 @@ export default async function SettingsPage({ searchParams }: PageProps) {
 
       <SettingsHealthPanel
         title="Settings health"
-        description="A shared view of the system-level control surface that now governs mappings, sync confidence, and source readiness."
-        stats={buildSettingsHealthStats()}
+        description="A shared view of the system-level control surface that now governs mappings, sync confidence, export visibility, and source readiness."
+        stats={settingsHealthStats}
       />
 
-      <IntegrationStatusPanel
-        title="Integration status"
-        description="Current readiness of the integrations and evidence layers that determine whether the product can move from structure to data-backed interpretation."
-        items={buildSettingsIntegrationItems()}
+      <IntegrationCatalogPanel />
+
+      <EntitySyncPanel
+        projectId={projectId}
+        projectLabel={projectLabel}
+        hasProject={hasProject}
+        dateRange={{
+          from: dateRange.from,
+          to: dateRange.to,
+          preset: dateRange.preset,
+        }}
+      />
+
+      <CustomerSheetExportPanel
+        projectId={projectId}
+        projectLabel={projectLabel}
+        hasProject={hasProject}
+        dateRange={{
+          from: dateRange.from,
+          to: dateRange.to,
+          preset: dateRange.preset,
+        }}
+      />
+
+      <SyncStatusPanel
+        summary={syncStatus}
+        projectId={projectId}
+        projectLabel={projectLabel}
+        hasProject={hasProject}
+      />
+
+      <RecentSyncRunsTable runs={syncRuns} />
+
+      <ExpansionReadinessSection
+        futureReadiness={futureReadiness}
+        projectName={projectLabel}
       />
 
       <ProjectSyncReadinessBanner
-        summary="The control layer is strong, but the product still needs normalized evidence hydration before Overview, SEO, and Behavior can move from thin interpretation to stronger ranked reads."
+        summary="The control plane is visible again, but the product still needs normalized evidence hydration before Overview, SEO, Behavior, and Intelligence can move from thin reads to stronger ranked interpretation."
         statuses={[
-          { label: "Project context ready", tone: "ready" },
-          { label: "GA4 partial", tone: "partial" },
-          { label: "GSC partial", tone: "partial" },
-          { label: "Evidence hydration pending", tone: "missing" },
+          {
+            label: hasProject ? "Project resolved" : "Project missing",
+            tone: hasProject ? "ready" : "missing",
+          },
+          {
+            label: workspaceId ? "Workspace active" : "Workspace missing",
+            tone: workspaceId ? "ready" : "missing",
+          },
+          {
+            label: syncRuns.length > 0 ? "Sync history visible" : "No sync history",
+            tone: syncRuns.length > 0 ? "partial" : "missing",
+          },
+          { label: "Export path pending", tone: "partial" },
         ]}
       />
 
       <SectionActionChecklist
         title="Settings next actions"
-        description="The fastest route to stronger product-wide interpretation is tighter mapping discipline and repeatable sync verification."
-        actions={buildSettingsActionChecklist()}
+        description="The fastest route to stronger product-wide interpretation is tighter mapping discipline and repeatable sync + export verification."
+        actions={[
+          "Confirm the selected project maps to the correct GA4 property and GSC site.",
+          "Run sync and verify the latest sync ledger reflects real execution.",
+          "Use the customer export panel to verify rows are actually written into the target sheet.",
+          "Only trust downstream intelligence after evidence becomes visible in Overview, SEO, and Behavior.",
+        ]}
       />
+
+      <SettingsSystemRulesPanel />
 
       <SettingsNavigationPanel
         title="Navigate with preserved context"

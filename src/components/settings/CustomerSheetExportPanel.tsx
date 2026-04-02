@@ -1,24 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
-type CustomerSheetExportPanelProps = {
+type Props = {
   projectId: string;
   projectLabel: string;
   hasProject: boolean;
   dateRange: {
-    from?: string;
-    to?: string;
+    from: string;
+    to: string;
     preset?: string;
   };
-};
-
-type ExportResponse = {
-  ok?: boolean;
-  error?: string;
-  spreadsheetId?: string;
-  writtenTabs?: string[];
-  projectId?: string;
 };
 
 export function CustomerSheetExportPanel({
@@ -26,152 +18,118 @@ export function CustomerSheetExportPanel({
   projectLabel,
   hasProject,
   dateRange,
-}: CustomerSheetExportPanelProps) {
-  const [spreadsheetInput, setSpreadsheetInput] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
-  const [message, setMessage] = useState(
-    hasProject
-      ? `Ready to export ${projectLabel} to Google Sheets.`
-      : "Resolve a project to enable export."
+}: Props) {
+  const [status, setStatus] = useState<"idle" | "running" | "success" | "error">(
+    "idle"
   );
+  const [message, setMessage] = useState("");
 
-  const disabled = useMemo(
-    () => !hasProject || !spreadsheetInput.trim() || isSubmitting,
-    [hasProject, spreadsheetInput, isSubmitting]
-  );
-
-  async function exportSheet() {
-    if (disabled) return;
-
+  async function handleExport() {
     try {
-      setIsSubmitting(true);
-      setStatus("idle");
-      setMessage(`Exporting ${projectLabel}...`);
+      setStatus("running");
+      setMessage("");
 
       const response = await fetch("/api/intelligence/export-customer-sheet", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          spreadsheetInput,
           projectId,
-          dateRange: {
-            start: dateRange.from,
-            end: dateRange.to,
-            preset: dateRange.preset,
-          },
+          from: dateRange.from,
+          to: dateRange.to,
+          preset: dateRange.preset ?? null,
         }),
       });
 
-      const data = (await response.json()) as ExportResponse;
+      const payload = await response.json().catch(() => ({}));
 
-      if (!response.ok || !data.ok) {
-        setStatus("error");
-        setMessage(data.error ?? "Export failed.");
-        return;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Customer sheet export failed.");
       }
-
-      const writtenTabs =
-        data.writtenTabs && data.writtenTabs.length > 0
-          ? data.writtenTabs.join(", ")
-          : "none";
 
       setStatus("success");
       setMessage(
-        `Export completed for ${projectLabel}. Tabs written: ${writtenTabs}.`
+        payload?.sheetUrl
+          ? `Export completed: ${payload.sheetUrl}`
+          : "Customer sheet export completed."
       );
     } catch (error: any) {
       setStatus("error");
-      setMessage(error?.message ?? "Export failed.");
-    } finally {
-      setIsSubmitting(false);
+      setMessage(error?.message ?? "Customer sheet export failed.");
     }
   }
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-      <div className="flex items-start justify-between gap-4">
+    <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5 md:p-6">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-white/45">
+          <div className="text-2xl font-semibold text-white">
             Customer sheet export
-          </p>
-          <h2 className="mt-2 text-lg font-semibold text-white">
-            Export project evidence
-          </h2>
-          <p className="mt-2 text-sm text-white/60">
-            Write normalized rows into a customer-owned Google Sheet using the
-            currently resolved project context.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={exportSheet}
-          disabled={disabled}
-          className="rounded-xl border border-cyan-400/30 bg-cyan-400/15 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {isSubmitting ? "Exporting..." : "Export to sheet"}
-        </button>
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        <div>
-          <label className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-white/40">
-            Google Sheet URL or spreadsheet ID
-          </label>
-          <input
-            value={spreadsheetInput}
-            onChange={(event) => setSpreadsheetInput(event.target.value)}
-            placeholder="Paste a Google Sheet URL or raw spreadsheet ID"
-            className="w-full rounded-xl border border-white/10 bg-black/35 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-cyan-400/30"
-          />
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
-              Project
-            </div>
-            <div className="mt-2 text-sm font-medium text-white">
-              {hasProject ? projectLabel : "No project selected"}
-            </div>
+          </div>
+          <div className="mt-2 max-w-3xl text-sm leading-6 text-white/60">
+            Export customer-facing evidence and structured intelligence outputs
+            for the currently selected project and date range.
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
-              Project ID
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-black/16 p-4">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
+                Project
+              </div>
+              <div className="mt-2 text-lg font-semibold text-white">
+                {projectLabel || "No project selected"}
+              </div>
+              <div className="mt-2 text-sm text-white/55">
+                {hasProject ? projectId : "Resolve project context first"}
+              </div>
             </div>
-            <div className="mt-2 text-sm font-medium text-white">
-              {hasProject ? projectId : "Unavailable"}
-            </div>
-          </div>
 
-          <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-            <div className="text-[11px] uppercase tracking-[0.18em] text-white/40">
-              Date range
+            <div className="rounded-2xl border border-white/10 bg-black/16 p-4">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
+                Date range
+              </div>
+              <div className="mt-2 text-lg font-semibold text-white">
+                {dateRange.from} → {dateRange.to}
+              </div>
+              <div className="mt-2 text-sm text-white/55">
+                Export window currently in use.
+              </div>
             </div>
-            <div className="mt-2 text-sm font-medium text-white">
-              {dateRange.from && dateRange.to
-                ? `${dateRange.from} → ${dateRange.to}`
-                : "Current preset"}
+
+            <div className="rounded-2xl border border-white/10 bg-black/16 p-4">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
+                Export state
+              </div>
+              <div className="mt-2 text-lg font-semibold text-white">
+                {status}
+              </div>
+              <div className="mt-2 text-sm text-white/55">
+                Run export after sync so evidence reflects the latest data.
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div
-        className={`mt-4 rounded-xl border px-4 py-3 text-sm ${
-          status === "success"
-            ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"
-            : status === "error"
-            ? "border-rose-400/20 bg-rose-400/10 text-rose-100"
-            : "border-white/10 bg-black/20 text-white/65"
-        }`}
-      >
-        {message}
+        <div className="xl:min-w-[320px]">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={!hasProject || status === "running"}
+            className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {status === "running" ? "Exporting..." : "Export customer sheet"}
+          </button>
+
+          <div className="mt-3 break-all text-xs text-white/50">
+            {!hasProject
+              ? "Resolve a valid project before export."
+              : status === "idle"
+              ? "Use this after sync so downstream exports reflect current evidence."
+              : message}
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   );
 }

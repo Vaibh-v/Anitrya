@@ -1,23 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSyncStatusSummary } from "@/lib/sync/sync-status-store";
+import { NextResponse } from "next/server";
+import { requireSession } from "@/lib/auth";
 
-export async function GET(request: NextRequest) {
-  const workspaceId = request.nextUrl.searchParams.get("workspaceId")?.trim() ?? "";
-  const projectSlug = request.nextUrl.searchParams.get("projectSlug")?.trim() ?? "";
+export async function GET() {
+  try {
+    const session = await requireSession();
 
-  if (!workspaceId || !projectSlug) {
+    return NextResponse.json({
+      ok: true,
+      workspaceId: session.user?.workspaceId ?? null,
+      syncRoute: "/api/sync/run",
+      exportRoute: "/api/intelligence/export-customer-sheet",
+      message:
+        "Settings control actions are available. Run sync first, then export after evidence hydration.",
+    });
+  } catch (error: any) {
     return NextResponse.json(
       {
-        error: "workspaceId and projectSlug are required.",
+        ok: false,
+        error: error?.message ?? "Failed to load sync status.",
       },
-      { status: 400 }
+      { status: error?.status ?? 500 }
     );
   }
-
-  const summary = await getSyncStatusSummary({
-    workspaceId,
-    projectSlug,
-  });
-
-  return NextResponse.json(summary);
 }
