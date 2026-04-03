@@ -1,49 +1,33 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-export type EntitySyncPanelProps = {
-  projectId: string;
-  projectLabel: string;
-  hasProject: boolean;
-  dateRange: {
-    from?: string;
-    to?: string;
-    preset?: string;
-  };
-};
+import { useEffect, useMemo, useState } from "react";
 
 type PanelState = {
   status: "idle" | "running" | "success" | "error";
   message: string;
 };
 
-function normalizeDateInput(value?: string): string {
-  const raw = (value ?? "").trim();
+export type EntitySyncPanelProps = {
+  projectId: string;
+  projectLabel: string;
+  hasProject: boolean;
+  dateRange: {
+    from: string;
+    to: string;
+    preset?: string;
+  };
+};
 
-  if (!raw) return "";
+function normalizeDateInput(value: string) {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-
-  const slashMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (slashMatch) {
-    const [, day, month, year] = slashMatch;
-    return `${year}-${month}-${day}`;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+    const [dd, mm, yyyy] = trimmed.split("/");
+    return `${yyyy}-${mm}-${dd}`;
   }
 
-  const date = new Date(raw);
-  if (!Number.isNaN(date.getTime())) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
-
-  return "";
-}
-
-function isIsoDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+  return trimmed;
 }
 
 export function EntitySyncPanel({
@@ -56,41 +40,35 @@ export function EntitySyncPanel({
   const [to, setTo] = useState(normalizeDateInput(dateRange.to));
   const [state, setState] = useState<PanelState>({
     status: "idle",
-    message: hasProject
-      ? `Ready to sync ${projectLabel}.`
-      : "Resolve a project to enable sync.",
+    message:
+      "Run project-scoped evidence sync before intelligence interpretation and export.",
   });
 
+  useEffect(() => {
+    if (dateRange?.from) {
+      setFrom(normalizeDateInput(dateRange.from));
+    }
+    if (dateRange?.to) {
+      setTo(normalizeDateInput(dateRange.to));
+    }
+  }, [dateRange]);
+
   const canRun = useMemo(() => {
-    return (
-      hasProject &&
-      Boolean(projectId) &&
-      isIsoDate(from) &&
-      isIsoDate(to) &&
-      state.status !== "running"
-    );
+    return Boolean(hasProject && projectId && from && to) && state.status !== "running";
   }, [hasProject, projectId, from, to, state.status]);
 
   async function handleRun() {
     if (!hasProject || !projectId) {
       setState({
         status: "error",
-        message: "PROJECT_SELECTION_REQUIRED",
-      });
-      return;
-    }
-
-    if (!isIsoDate(from) || !isIsoDate(to)) {
-      setState({
-        status: "error",
-        message: "VALID_DATE_RANGE_REQUIRED",
+        message: "Project slug is required for entity sync.",
       });
       return;
     }
 
     setState({
       status: "running",
-      message: `Entity sync is running for ${projectLabel}...`,
+      message: "Running entity sync...",
     });
 
     try {
@@ -100,41 +78,31 @@ export function EntitySyncPanel({
           "content-type": "application/json",
         },
         body: JSON.stringify({
+          projectSlug: projectId,
           projectId,
-          dateRange: {
-            start: from,
-            end: to,
-            preset: dateRange.preset,
-          },
-          mode: "manual",
+          from,
+          to,
+          sources: ["google_ga4", "google_gsc"],
         }),
       });
 
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        error?: string;
-        note?: string;
-        ranAt?: string;
-        projectId?: string;
-      };
+      const payload = await response.json().catch(() => ({}));
 
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "ENTITY_SYNC_FAILED");
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Entity sync failed.");
       }
 
       setState({
         status: "success",
         message:
-          payload.note ??
-          `Entity sync completed for ${projectLabel}${
-            payload.ranAt ? ` at ${payload.ranAt}` : "."
-          }`,
+          payload?.run?.message ??
+          "Sync completed. Data ingestion layer executed. Evidence will hydrate once normalized.",
       });
     } catch (error) {
       setState({
         status: "error",
         message:
-          error instanceof Error ? error.message : "ENTITY_SYNC_FAILED",
+          error instanceof Error ? error.message : "Entity sync failed.",
       });
     }
   }
@@ -143,19 +111,18 @@ export function EntitySyncPanel({
     <section className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5 md:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Entity sync control</h2>
-          <p className="mt-2 text-sm leading-6 text-white/56">
-            Run project-scoped evidence sync before intelligence interpretation and
-            export.
-          </p>
+          <div className="text-2xl font-semibold text-white">Entity sync control</div>
+          <div className="mt-2 text-sm leading-6 text-white/60">
+            Run project-scoped evidence sync before intelligence interpretation and export.
+          </div>
         </div>
 
-        <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/65">
-          {hasProject ? projectLabel : "No project selected"}
+        <div className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-white/65">
+          {projectLabel}
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+      <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_1fr_auto]">
         <label className="block">
           <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-white/40">
             From
@@ -163,8 +130,8 @@ export function EntitySyncPanel({
           <input
             type="date"
             value={from}
-            onChange={(event) => setFrom(normalizeDateInput(event.target.value))}
-            className="w-full rounded-[16px] border border-white/10 bg-black/16 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]"
+            onChange={(event) => setFrom(event.target.value)}
+            className="w-full rounded-[16px] border border-white/10 bg-black/16 px-4 py-3 text-sm text-white outline-none"
           />
         </label>
 
@@ -175,52 +142,50 @@ export function EntitySyncPanel({
           <input
             type="date"
             value={to}
-            onChange={(event) => setTo(normalizeDateInput(event.target.value))}
-            className="w-full rounded-[16px] border border-white/10 bg-black/16 px-4 py-3 text-sm text-white outline-none [color-scheme:dark]"
+            onChange={(event) => setTo(event.target.value)}
+            className="w-full rounded-[16px] border border-white/10 bg-black/16 px-4 py-3 text-sm text-white outline-none"
           />
         </label>
 
-        <button
-          type="button"
-          onClick={handleRun}
-          disabled={!canRun}
-          className="rounded-xl border border-cyan-400/30 bg-cyan-400/[0.08] px-4 py-3 text-sm font-medium text-cyan-100 transition disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {state.status === "running" ? "Running..." : "Run entity sync"}
-        </button>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={handleRun}
+            disabled={!canRun}
+            className="w-full rounded-[16px] border border-cyan-400/30 bg-cyan-400/10 px-5 py-3 text-sm font-medium text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60 xl:w-auto"
+          >
+            {state.status === "running" ? "Running..." : "Run entity sync"}
+          </button>
+        </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <div className="rounded-[16px] border border-white/10 bg-black/16 px-4 py-4">
+      <div className="mt-5 grid gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-black/16 p-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
             Project
           </div>
-          <div className="mt-2 text-sm text-white/72">
-            {hasProject ? projectLabel : "No project selected"}
-          </div>
+          <div className="mt-2 text-lg font-semibold text-white">{projectLabel}</div>
         </div>
 
-        <div className="rounded-[16px] border border-white/10 bg-black/16 px-4 py-4">
+        <div className="rounded-2xl border border-white/10 bg-black/16 p-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
-            Project ID
+            Project id
           </div>
-          <div className="mt-2 text-sm text-white/72">
-            {hasProject ? projectId : "Unavailable"}
-          </div>
+          <div className="mt-2 text-lg font-semibold text-white">{projectId}</div>
         </div>
 
-        <div className="rounded-[16px] border border-white/10 bg-black/16 px-4 py-4">
+        <div className="rounded-2xl border border-white/10 bg-black/16 p-4">
           <div className="text-[11px] uppercase tracking-[0.18em] text-white/38">
             Range
           </div>
-          <div className="mt-2 text-sm text-white/72">
-            {from && to ? `${from} → ${to}` : "Valid date range required"}
+          <div className="mt-2 text-lg font-semibold text-white">
+            {from} → {to}
           </div>
         </div>
       </div>
 
       <div
-        className={`mt-4 rounded-[16px] border px-4 py-4 text-sm ${
+        className={`mt-5 rounded-[16px] border px-4 py-4 text-sm ${
           state.status === "error"
             ? "border-rose-400/20 bg-rose-400/[0.08] text-rose-100"
             : state.status === "success"

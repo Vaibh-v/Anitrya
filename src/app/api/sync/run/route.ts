@@ -1,119 +1,84 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import {
-  getAccessToken,
-  gaListProperties,
-  gaRunReport,
-  gscListSites,
-  gscQueryKeywords,
-  ensureTabsExist,
-  appendRows,
-} from "@/lib/google";
+import { recordManualSyncRun } from "@/lib/sync/sync-run-recorder";
+import { runFullSync } from "@/lib/sync/sync-orchestrator";
 
-import { normalizeGA4Daily } from "@/lib/normalize/ga4";
-import {
-  normalizeGSCDaily,
-  normalizeGSCRankings,
-} from "@/lib/normalize/gsc";
+type RequestBody = {
+  workspaceId?: string | null;
+  projectSlug?: string | null;
+  projectId?: string | null;
+  from?: string | null;
+  to?: string | null;
+  sources?: string[] | null;
+};
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const session = await requireSession();
-    const token = getAccessToken(session);
+    const body = (await request.json()) as RequestBody;
 
-    const sheetId = process.env.VSIGHT_SHEET_ID;
-    if (!sheetId) throw new Error("Missing VSIGHT_SHEET_ID");
+    const sessionWorkspaceId = session.user?.workspaceId ?? null;
 
-    await ensureTabsExist(token, sheetId);
-
-    const workspaceId = "default_workspace";
-
-    // ---------------- GA4 ----------------
-    const properties = await gaListProperties(token);
-
-    for (const prop of properties) {
-      const data = await gaRunReport(token, prop.id, {
-        dateRanges: [{ startDate: "7daysAgo", endDate: "today" }],
-        dimensions: [{ name: "date" }],
-        metrics: [
-          { name: "sessions" },
-          { name: "totalUsers" },
-          { name: "conversions" },
-        ],
-      });
-
-      const rows =
-        data.rows?.map((r: any) => ({
-          date: r.dimensionValues?.[0]?.value,
-          sessions: Number(r.metricValues?.[0]?.value ?? 0),
-          users: Number(r.metricValues?.[1]?.value ?? 0),
-          conversions: Number(r.metricValues?.[2]?.value ?? 0),
-        })) ?? [];
-
-      const normalized = normalizeGA4Daily({
-        workspaceId,
-        propertyId: prop.id,
-        propertyName: prop.name,
-        rows,
-      });
-
-      await appendRows(
-        token,
-        sheetId,
-        "ga4_daily",
-        normalized.map((r) => Object.values(r))
+    if (!sessionWorkspaceId) {
+      return NextResponse.json(
+        { error: "Missing workspace context." },
+        { status: 401 }
       );
     }
 
-    // ---------------- GSC ----------------
-    const sites = await gscListSites(token);
-
-    for (const site of sites) {
-      const rows = await gscQueryKeywords(token, {
-        siteUrl: site.siteUrl,
-        startDate: "2026-01-01",
-        endDate: "2026-12-31",
-      });
-
-      const daily = normalizeGSCDaily({
-        workspaceId,
-        siteUrl: site.siteUrl,
-        rows,
-      });
-
-      const rankings = normalizeGSCRankings({
-        workspaceId,
-        siteUrl: site.siteUrl,
-        rows,
-      });
-
-      await appendRows(
-        token,
-        sheetId,
-        "gsc_daily",
-        daily.map((r) => Object.values(r))
-      );
-
-      await appendRows(
-        token,
-        sheetId,
-        "rankings_snapshot",
-        rankings.map((r) => Object.values(r))
+    if (body.workspaceId && body.workspaceId !== sessionWorkspaceId) {
+      return NextResponse.json(
+        { error: "Workspace mismatch for sync request." },
+        { status: 403 }
       );
     }
 
-    // ---------------- SYNC LOG ----------------
-    const ranAt = new Date().toISOString();
+    const resolvedProjectSlug = body.projectSlug ?? body.projectId ?? null;
 
-    await appendRows(token, sheetId, "sync_health", [
-      [ranAt, "manual", "ok", "Full sync executed"],
-    ]);
+    if (!resolvedProjectSlug) {
+      return NextResponse.json(
+        { error: "Project slug is required for entity sync." },
+        { status: 400 }
+      );
+    }
 
-    return NextResponse.json({ ok: true, ranAt });
-  } catch (e: any) {
+    const summary = await runFullSync({
+      workspaceId: sessionWorkspaceId,
+      projectSlug: resolvedProjectSlug,
+      from: body.from ?? "",
+      to: body.to ?? "",
+      sources: body.sources ?? ["google_ga4", "google_gsc"],
+    });
+
+    await recordManualSyncRun({
+      workspaceId: sessionWorkspaceId,
+      source: "google_ga4",
+      status: "success",
+      rowsSynced: summary.totalRowsProcessed,
+      meta: {
+        projectSlug: resolvedProjectSlug,
+        from: body.from ?? "",
+        to: body.to ?? "",
+        sources: body.sources ?? ["google_ga4", "google_gsc"],
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      run: {
+        projectSlug: resolvedProjectSlug,
+        totalRowsProcessed: summary.totalRowsProcessed,
+        message:
+          "Sync completed. Data ingestion layer executed. Evidence will hydrate once normalized.",
+      },
+      summary,
+    });
+  } catch (error: any) {
     return NextResponse.json(
-      { error: e.message },
-      { status: e.status ?? 500 }
+      {
+        error: error?.message ?? "Entity sync failed.",
+      },
+      { status: error?.status ?? 500 }
     );
   }
 }

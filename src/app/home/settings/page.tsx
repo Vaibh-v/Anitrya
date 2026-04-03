@@ -1,29 +1,32 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { resolveDateRange } from "@/lib/intelligence/date-range";
-import { buildFutureReadinessPanelData } from "@/lib/intelligence/future-readiness";
 import { DateRangeToolbar } from "@/lib/intelligence/ui";
 import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
+import { buildFutureReadinessPanelData } from "@/lib/intelligence/future-readiness";
+import { ProjectContextSection } from "@/components/shared/ProjectContextSection";
+import { SharedPageHeader } from "@/components/shared/SharedPageHeader";
+import { ProjectMappingHealthPanel } from "@/components/shared/ProjectMappingHealthPanel";
+import { SettingsHealthPanel } from "@/components/shared/SettingsHealthPanel";
+import { ProjectSyncReadinessBanner } from "@/components/shared/ProjectSyncReadinessBanner";
+import { SectionActionChecklist } from "@/components/shared/SectionActionChecklist";
+import { SettingsNavigationPanel } from "@/components/shared/SettingsNavigationPanel";
+import { IntegrationTogglePanel } from "@/components/settings/IntegrationTogglePanel";
+import { IntegrationCatalogPanel } from "@/components/settings/IntegrationCatalogPanel";
+import { EntitySyncPanel } from "@/components/settings/EntitySyncPanel";
+import { CustomerSheetExportPanel } from "@/components/settings/CustomerSheetExportPanel";
+import { SyncStatusPanel } from "@/components/settings/SyncStatusPanel";
+import { ExpansionReadinessSection } from "@/components/settings/ExpansionReadinessSection";
+import { RecentSyncRunsTable } from "@/components/settings/RecentSyncRunsTable";
+import { SettingsSystemRulesPanel } from "@/components/settings/SettingsSystemRulesPanel";
+import { buildIntegrationToggleSeed } from "@/lib/settings/integration-toggle-seed";
+import { getSyncStatusSummary } from "@/lib/sync/sync-status-store";
 import {
   buildBehaviorHref,
   buildIntelligenceHref,
   buildOverviewHref,
   buildSeoHref,
 } from "@/lib/intelligence/navigation-links";
-import { getSyncStatusSummary } from "@/lib/sync/sync-status-store";
-import { EntitySyncPanel } from "@/components/settings/EntitySyncPanel";
-import { CustomerSheetExportPanel } from "@/components/settings/CustomerSheetExportPanel";
-import { ExpansionReadinessSection } from "@/components/settings/ExpansionReadinessSection";
-import { SyncStatusPanel } from "@/components/settings/SyncStatusPanel";
-import { IntegrationCatalogPanel } from "@/components/settings/IntegrationCatalogPanel";
-import { SettingsSectionHero } from "@/components/shared/SettingsSectionHero";
-import { ProjectMappingHealthPanel } from "@/components/shared/ProjectMappingHealthPanel";
-import { SettingsHealthPanel } from "@/components/shared/SettingsHealthPanel";
-import { ProjectSyncReadinessBanner } from "@/components/shared/ProjectSyncReadinessBanner";
-import { SectionActionChecklist } from "@/components/shared/SectionActionChecklist";
-import { SettingsNavigationPanel } from "@/components/shared/SettingsNavigationPanel";
-import { RecentSyncRunsTable } from "../../../components/settings/RecentSyncRunsTable";
-import { SettingsSystemRulesPanel } from "../../../components/settings/SettingsSystemRulesPanel";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -81,28 +84,32 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           recentRuns: [],
         };
 
+  const integrationToggles = await buildIntegrationToggleSeed({
+    workspaceId,
+  });
+
   const settingsHealthStats = [
     {
       label: "Connected now",
-      value: hasProject ? 1 : 0,
-      context: "Project-scoped operational controls currently resolved in Settings.",
+      value: integrationToggles.filter((item) => item.enabled).length,
+      context: "Providers currently enabled in the control plane.",
     },
     {
       label: "Preserved next",
-      value: 7,
-      context: "Future integrations already preserved in architecture.",
+      value: integrationToggles.filter((item) => item.state === "preserved").length,
+      context: "Providers still visible in architecture but not yet activated.",
     },
     {
       label: "Recent sync runs",
       value: syncRuns.length,
-      context: "Operational execution records currently visible in this workspace.",
+      context: "Execution records currently visible for this workspace.",
     },
     {
       label: "Customer export",
       value: hasProject ? "ready" : "blocked",
       context: hasProject
-        ? "Customer sheet export surface is available for the selected project."
-        : "Resolve a valid project context to enable export safely.",
+        ? "Customer sheet export remains available for the selected project."
+        : "Resolve a valid project context before export.",
     },
   ];
 
@@ -116,18 +123,37 @@ export default async function SettingsPage({ searchParams }: PageProps) {
 
   return (
     <main className="space-y-8">
+      <SharedPageHeader
+        projectLabel={projectLabel}
+        projectId={hasProject ? projectId : null}
+      />
+
+      <ProjectContextSection
+        activeProjectLabel={projectLabel}
+        activeProjectId={hasProject ? projectId : null}
+        cards={[
+          {
+            label: "Clara AI",
+            ga4Label: "Clara Ai",
+            gscLabel: "sc-domain:justclara.ai",
+            href: "/home/settings?project=clara-ai",
+            selected: projectLabel === "Clara AI",
+          },
+          {
+            label: "ZT",
+            ga4Label: "ZenTrades",
+            gscLabel: "sc-domain:zentrades.pro",
+            href: "/home/settings?project=zt",
+            selected: projectId === "zt",
+          },
+        ]}
+      />
+
       <DateRangeToolbar
         basePath="/home/settings"
         projectSlug={hasProject ? projectId : null}
         workspaceId={workspaceId}
         range={dateRange}
-      />
-
-      <SettingsSectionHero
-        title="Settings"
-        description="Integration status, sync control, operational visibility, customer-sheet export, and expansion readiness."
-        projectLabel={projectLabel}
-        projectId={hasProject ? projectId : "unresolved"}
       />
 
       <ProjectMappingHealthPanel
@@ -165,6 +191,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         description="A shared view of the system-level control surface that now governs mappings, sync confidence, export visibility, and source readiness."
         stats={settingsHealthStats}
       />
+
+      <IntegrationTogglePanel initialRecords={integrationToggles} />
 
       <IntegrationCatalogPanel />
 
@@ -205,7 +233,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       />
 
       <ProjectSyncReadinessBanner
-        summary="The control plane is visible again, but the product still needs normalized evidence hydration before Overview, SEO, Behavior, and Intelligence can move from thin reads to stronger ranked interpretation."
+        summary="The control plane is visible again, but export still depends on valid Google Sheets scope and evidence hydration still depends on provider-specific normalized runners."
         statuses={[
           {
             label: hasProject ? "Project resolved" : "Project missing",
@@ -219,18 +247,21 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             label: syncRuns.length > 0 ? "Sync history visible" : "No sync history",
             tone: syncRuns.length > 0 ? "partial" : "missing",
           },
-          { label: "Export path pending", tone: "partial" },
+          {
+            label: "Export auth pending",
+            tone: "partial",
+          },
         ]}
       />
 
       <SectionActionChecklist
         title="Settings next actions"
-        description="The fastest route to stronger product-wide interpretation is tighter mapping discipline and repeatable sync + export verification."
+        description="The fastest route to stronger product-wide interpretation is controlled activation, reliable sync logging, valid Google export auth, and real normalized ingestion."
         actions={[
-          "Confirm the selected project maps to the correct GA4 property and GSC site.",
-          "Run sync and verify the latest sync ledger reflects real execution.",
-          "Use the customer export panel to verify rows are actually written into the target sheet.",
-          "Only trust downstream intelligence after evidence becomes visible in Overview, SEO, and Behavior.",
+          "Reconnect Google with spreadsheet scope so customer export can write to Sheets.",
+          "Keep GA4 and GSC enabled as the first live evidence sources.",
+          "Do not force preserved providers into fake sync until their ingestion paths exist.",
+          "Use the shared project context section across all tabs to keep project selection consistent.",
         ]}
       />
 

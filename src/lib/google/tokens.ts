@@ -4,9 +4,9 @@ type SessionLike = {
   user?: {
     id?: string;
     email?: string | null;
-    workspaceId?: string;
+    workspaceId?: string | null;
   };
-  accessToken?: string;
+  accessToken?: string | null;
 };
 
 type SupportedProvider =
@@ -16,6 +16,7 @@ type SupportedProvider =
   | "GOOGLE_ADS";
 
 function hasScopes(scope: string | null, requiredScopes: string[]) {
+  if (!requiredScopes.length) return true;
   if (!scope) return false;
   return requiredScopes.every((required) => scope.includes(required));
 }
@@ -85,7 +86,9 @@ export async function getWorkspaceGoogleAccessToken(
   if (!chosen?.accessToken) {
     throw Object.assign(
       new Error(
-        "No connected Google token was found for this workspace. Reconnect a Google integration from Settings."
+        requiredScopes.includes("https://www.googleapis.com/auth/spreadsheets")
+          ? "No Google token with Sheets access was found for this workspace. Reconnect Google with Sheets scope from Settings."
+          : "No connected Google token was found for this workspace. Reconnect a Google integration from Settings."
       ),
       { status: 401 }
     );
@@ -97,46 +100,8 @@ export async function getWorkspaceGoogleAccessToken(
 export async function getGoogleSheetsAccessTokenForSession(
   session: SessionLike
 ): Promise<string> {
-  const workspaceId = session?.user?.workspaceId;
-
-  if (!workspaceId) {
-    throw Object.assign(new Error("Missing workspaceId on session."), {
-      status: 401,
-    });
-  }
-
-  const tokens = await prisma.integrationToken.findMany({
-    where: {
-      workspaceId,
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-    select: {
-      provider: true,
-      accessToken: true,
-      refreshToken: true,
-      expiresAt: true,
-      scope: true,
-      updatedAt: true,
-    },
+  return getWorkspaceGoogleAccessToken(session, {
+    acceptedProviders: ["GOOGLE_GA4", "GOOGLE_GSC"],
+    requiredScopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
-
-  const usable = tokens.find(
-    (token) =>
-      Boolean(token.accessToken) &&
-      typeof token.scope === "string" &&
-      token.scope.includes("https://www.googleapis.com/auth/spreadsheets")
-  );
-
-  if (!usable?.accessToken) {
-    throw Object.assign(
-      new Error(
-        "No Google token with Sheets permission was found for this workspace. Reconnect Google with Sheets access and then retry export."
-      ),
-      { status: 401 }
-    );
-  }
-
-  return usable.accessToken;
 }
