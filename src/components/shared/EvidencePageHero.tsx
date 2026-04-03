@@ -1,11 +1,9 @@
-import { ProjectBadge } from "@/lib/intelligence/ui";
-
 type Props = {
   eyebrow: string;
   title: string;
   description: string;
-  projectLabel: string;
-  projectId: string;
+  projectLabel?: string;
+  projectId?: string | null;
 };
 
 export function EvidencePageHero({
@@ -15,33 +13,34 @@ export function EvidencePageHero({
   projectLabel,
   projectId,
 }: Props) {
-  const safeProjectLabel =
-    projectLabel && projectLabel.trim().length > 0
-      ? projectLabel
-      : "No project selected";
-
-  const safeProjectId =
-    projectId && projectId.trim().length > 0 ? projectId : "unresolved";
-
   return (
-    <section className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5 md:p-6">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200/70">
+    <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,19,52,0.9),rgba(3,9,25,0.95))] p-6 md:p-8">
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        <div className="max-w-4xl">
+          <div className="text-[11px] uppercase tracking-[0.28em] text-cyan-200/70">
             {eyebrow}
           </div>
-          <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white">
+          <h1 className="mt-4 text-[34px] font-semibold tracking-[-0.04em] text-white md:text-[56px]">
             {title}
           </h1>
-          <p className="mt-3 max-w-3xl text-sm leading-7 text-white/58">
+          <p className="mt-4 max-w-4xl text-base leading-7 text-white/68 md:text-[22px] md:leading-8">
             {description}
           </p>
         </div>
 
-        <ProjectBadge
-          label={safeProjectLabel}
-          sublabel={`ACTIVE PROJECT • ${safeProjectId}`}
-        />
+        {projectLabel ? (
+          <div className="rounded-[20px] border border-cyan-300/15 bg-cyan-400/[0.06] px-5 py-4 xl:min-w-[220px]">
+            <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">
+              Active project
+            </div>
+            <div className="mt-3 text-2xl font-semibold text-white">
+              {projectLabel}
+            </div>
+            {projectId ? (
+              <div className="mt-2 text-sm text-white/50">ACTIVE PROJECT • {projectId}</div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </section>
   );
