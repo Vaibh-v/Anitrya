@@ -1,277 +1,158 @@
 import { requireSession } from "@/lib/auth";
-import { resolveDateRange } from "@/lib/intelligence/date-range";
-import { DateRangeToolbar } from "@/lib/intelligence/ui";
-import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
-import {
-  buildBehaviorConnectedSources,
-  buildBehaviorReadinessCards,
-} from "@/lib/intelligence/section-readiness";
-import {
-  buildIntelligenceHref,
-  buildOverviewHref,
-  buildSeoHref,
-} from "@/lib/intelligence/navigation-links";
-import { ProjectContextSection } from "@/components/shared/ProjectContextSection";
-import { EvidencePageHero } from "@/components/shared/EvidencePageHero";
-import { ProjectMappingHealthPanel } from "@/components/shared/ProjectMappingHealthPanel";
-import { ProjectSyncReadinessBanner } from "@/components/shared/ProjectSyncReadinessBanner";
-import { EvidenceLinkedNavPanel } from "@/components/shared/EvidenceLinkedNavPanel";
-import { EvidenceCoveragePanel } from "@/components/shared/EvidenceCoveragePanel";
-import { SectionInterpretationPanel } from "@/components/shared/SectionInterpretationPanel";
-import { SectionFindingsPanel } from "@/components/shared/SectionFindingsPanel";
-import { SectionStatCards } from "@/components/shared/SectionStatCards";
-import { SectionUnlockPanel } from "@/components/shared/SectionUnlockPanel";
-import { ReadinessMatrixPanel } from "@/components/shared/ReadinessMatrixPanel";
-import { ConnectedSourcesPanel } from "@/components/shared/ConnectedSourcesPanel";
-import { SectionActionChecklist } from "@/components/shared/SectionActionChecklist";
+import { getProjectMapping } from "@/lib/project/project-mapper";
+import { getBehaviorEvidenceSummary } from "@/lib/evidence/normalized-behavior-store";
 
 type PageProps = {
   searchParams?: Promise<{
     project?: string;
-    workspace?: string;
-    preset?: string;
     from?: string;
     to?: string;
-    projectName?: string;
   }>;
 };
 
-export default async function BehaviorPage({ searchParams }: PageProps) {
-  const params = (await searchParams) ?? {};
+function shiftDate(base: Date, offsetDays: number) {
+  const next = new Date(base);
+  next.setDate(next.getDate() + offsetDays);
+  return next;
+}
+
+function formatDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export default async function BehaviorPage(props: PageProps) {
   const session = await requireSession();
+  const workspaceId = session.user?.workspaceId;
 
-  const selectedProject = resolveSelectedProject({
-    requestedProjectId: params.project ?? null,
-    requestedProjectName: params.projectName ?? null,
-    sessionWorkspaceId: session.user?.workspaceId ?? params.workspace ?? null,
-    fallbackProjectId: "default-project",
-  });
+  if (!workspaceId) {
+    throw new Error("Missing workspace context on the current session.");
+  }
 
-  const dateRange = resolveDateRange({
-    preset: params.preset,
-    from: params.from,
-    to: params.to,
-  });
+  const searchParams = (await props.searchParams) ?? {};
+  const today = new Date();
+  const defaultFrom = formatDate(shiftDate(today, -29));
+  const defaultTo = formatDate(today);
 
-  const projectId = selectedProject.projectId;
-  const projectLabel = selectedProject.displayName;
-  const workspaceId = session.user?.workspaceId ?? params.workspace ?? null;
+  const projectRef = searchParams.project ?? "zt";
+  const from = searchParams.from ?? defaultFrom;
+  const to = searchParams.to ?? defaultTo;
 
-  const navContext = {
-    projectId,
+  const project = await getProjectMapping({
+    projectRef,
     workspaceId,
-    preset: params.preset,
-    from: params.from,
-    to: params.to,
-  };
+  });
+
+  const summary = await getBehaviorEvidenceSummary({
+    workspaceId,
+    projectId: project.projectSlug,
+    from,
+    to,
+  });
+
+  const confidence =
+    summary.landingRows > 0 && summary.sourceRows > 0
+      ? "medium"
+      : summary.landingRows > 0 || summary.sourceRows > 0
+        ? "low"
+        : "low";
 
   return (
     <main className="space-y-8">
-      <ProjectContextSection
-        activeProjectLabel={projectLabel}
-        activeProjectId={selectedProject.hasProject ? projectId : null}
-        cards={[
-          {
-            label: "Clara AI",
-            ga4Label: "Clara Ai",
-            gscLabel: "sc-domain:justclara.ai",
-            href: "/home/behavior?project=clara-ai",
-            selected: projectLabel === "Clara AI",
-          },
-          {
-            label: "ZT",
-            ga4Label: "ZenTrades",
-            gscLabel: "sc-domain:zentrades.pro",
-            href: "/home/behavior?project=zt",
-            selected: projectId === "zt",
-          },
-        ]}
-      />
+      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,32,75,0.62),rgba(4,10,24,0.88))] p-8">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-200/80">Anitrya intelligence</div>
+            <h1 className="mt-4 text-5xl font-semibold tracking-tight text-white">Behavior evidence</h1>
+            <p className="mt-4 max-w-[900px] text-[18px] leading-8 text-white/76">
+              Landing-page and acquisition-quality interpretation built from normalized GA4 behavior evidence.
+            </p>
+          </div>
 
-      <DateRangeToolbar
-        basePath="/home/behavior"
-        projectSlug={projectId}
-        workspaceId={workspaceId}
-        range={dateRange}
-      />
+          <div className="rounded-[24px] border border-cyan-400/20 bg-cyan-400/10 px-6 py-5 text-right">
+            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-100/70">Active project</div>
+            <div className="mt-3 text-[34px] font-semibold text-white">{project.projectLabel}</div>
+            <div className="mt-1 text-sm text-white/55">ACTIVE PROJECT • {project.projectSlug}</div>
+          </div>
+        </div>
+      </section>
 
-      <EvidencePageHero
-        eyebrow="Anitrya Intelligence"
-        title="Behavior evidence"
-        description="Landing-page and acquisition-quality interpretation built from normalized GA4 behavior evidence."
-        projectLabel={projectLabel}
-        projectId={projectId}
-      />
+      <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Landing rows", value: summary.landingRows, helper: "Page-level behavior evidence available in the current range" },
+          { label: "Source rows", value: summary.sourceRows, helper: "Acquisition-quality rows available in the current range" },
+          { label: "Entity findings", value: summary.landingRows + summary.sourceRows, helper: "Structured behavior findings currently rankable once interpretation deepens" },
+          { label: "Confidence", value: confidence, helper: "Current ranked confidence for behavior interpretation" },
+        ].map((item) => (
+          <div key={item.label} className="rounded-[26px] border border-white/10 bg-black/14 p-6">
+            <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
+            <div className="mt-5 text-[56px] font-semibold leading-none text-white">{item.value}</div>
+            <p className="mt-5 text-[16px] leading-7 text-white/68">{item.helper}</p>
+          </div>
+        ))}
+      </section>
 
-      <ProjectMappingHealthPanel
-        description="Behavior accuracy depends on the active project remaining mapped to the correct GA4 property and preserving the same project context as Intelligence."
-        items={[
-          {
-            label: "Project",
-            value: projectLabel || "unresolved",
-            tone: projectLabel ? "ready" : "missing",
-            context: "Current business context selected for the behavior read.",
-          },
-          {
-            label: "Project id",
-            value: projectId || "unresolved",
-            tone: projectId ? "ready" : "missing",
-            context: "The project slug currently passed through the behavior layer.",
-          },
-          {
-            label: "Workspace",
-            value: workspaceId || "missing",
-            tone: workspaceId ? "ready" : "missing",
-            context: "Workspace identity used to preserve project context across tabs.",
-          },
-          {
-            label: "Date range",
-            value: `${dateRange.from} → ${dateRange.to}`,
-            tone: "ready",
-            context: "The current evidence window used to evaluate behavior coverage.",
-          },
-        ]}
-      />
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_1fr]">
+        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+          <h2 className="text-[34px] font-semibold text-white">Behavior evidence coverage</h2>
+          <p className="mt-2 text-[15px] text-white/68">
+            Coverage across landing quality and acquisition-quality interpretation.
+          </p>
 
-      <ReadinessMatrixPanel
-        title="Behavior readiness"
-        description="A shared view of what is structurally ready versus still blocked across the behavior layer."
-        items={buildBehaviorReadinessCards()}
-      />
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Landing evidence", value: summary.landingRows, helper: "Page-level engagement and conversion-signal evidence used for behavior diagnosis." },
+              { label: "Acquisition evidence", value: summary.sourceRows, helper: "Source / medium evidence used for traffic-quality and conversion-support interpretation." },
+              { label: "Best next step", value: "quality / conversion", helper: "Use landing and source concentration to isolate weak intent-to-performance alignment." },
+              { label: "Readiness", value: summary.landingRows + summary.sourceRows > 0 ? "partial" : "thin", helper: "Indicates whether behavior evidence is deep enough for stronger ranking." },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
+                <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
+                <div className="mt-3 text-[44px] font-semibold leading-none text-white">{item.value}</div>
+                <div className="mt-4 text-[15px] leading-7 text-white/64">{item.helper}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <SectionStatCards
-        items={[
-          {
-            label: "Landing rows",
-            value: 0,
-            context: "Page-level behavior evidence available in the current range.",
-          },
-          {
-            label: "Source rows",
-            value: 0,
-            context: "Acquisition-quality rows available in the current range.",
-          },
-          {
-            label: "Entity findings",
-            value: 0,
-            context: "Structured behavior findings currently ranked.",
-          },
-          {
-            label: "Confidence",
-            value: "low",
-            context: "Current ranked confidence for behavior interpretation.",
-          },
-        ]}
-      />
+        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+          <h2 className="text-[34px] font-semibold text-white">Behavior interpretation</h2>
+          <p className="mt-2 text-[15px] text-white/68">
+            Current behavior contribution to the total intelligence read.
+          </p>
 
-      <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
-        <EvidenceCoveragePanel
-          title="Behavior evidence coverage"
-          description="Coverage across landing quality and acquisition-quality interpretation."
-          cards={[
-            {
-              label: "Landing evidence",
-              value: 0,
-              context:
-                "Page-level engagement and conversion-signal evidence used for behavior diagnosis.",
-            },
-            {
-              label: "Acquisition evidence",
-              value: 0,
-              context:
-                "Source / medium evidence used for traffic-quality and conversion-support interpretation.",
-            },
-            {
-              label: "Best next step",
-              value: "quality / conversion",
-              context:
-                "Use landing and source concentration to isolate weak intent-to-performance alignment.",
-            },
-            {
-              label: "Readiness",
-              value: "thin",
-              context:
-                "Indicates whether behavior evidence is deep enough for stronger ranking.",
-            },
-          ]}
-        />
+          <div className="mt-8 rounded-[24px] border border-white/10 bg-white/[0.02] p-6">
+            <div className="text-[22px] font-semibold text-white">
+              {summary.landingRows + summary.sourceRows === 0
+                ? "No diagnostics available"
+                : "Behavior evidence is available"}
+            </div>
+            <div className="mt-4 text-[16px] leading-8 text-white/68">
+              {summary.landingRows + summary.sourceRows === 0
+                ? "Evidence is still limited for this section. Run sync and review connected sources."
+                : `The current range contains ${summary.landingRows} landing rows and ${summary.sourceRows} source rows for behavior interpretation.`}
+            </div>
+          </div>
+        </div>
+      </section>
 
-        <SectionInterpretationPanel
-          title="Behavior interpretation"
-          description="Current behavior contribution to the total intelligence read."
-          emptyTitle="No diagnostics available"
-          emptyDescription="Evidence is still limited for this section. Run sync and review connected sources."
-        />
-      </div>
-
-      <SectionFindingsPanel
-        title="Behavior findings"
-        description="Structured behavior findings from the current evidence set."
-        emptyTitle="No findings yet"
-        emptyDescription="Structured behavior findings will appear here as entity-level evidence deepens."
-      />
-
-      <ConnectedSourcesPanel
-        title="Connected sources"
-        description="Current status of the sources that should eventually power stronger behavior interpretation."
-        items={buildBehaviorConnectedSources()}
-      />
-
-      <ProjectSyncReadinessBanner
-        summary="The behavior section is ready to accept normalized GA4 landing and acquisition-quality evidence, but the current range is still empty."
-        statuses={[
-          { label: "Landing evidence missing", tone: "missing" },
-          { label: "Source evidence missing", tone: "missing" },
-          { label: "Behavior section ready", tone: "partial" },
-          { label: "Execution linked", tone: "ready" },
-        ]}
-      />
-
-      <SectionUnlockPanel
-        title="What unlocks stronger behavior interpretation"
-        description="Behavior ranking quality improves only when normalized GA4 landing and acquisition evidence becomes available together."
-        unlocks={[
-          "Hydrate landing rows into page-quality interpretation.",
-          "Hydrate source / medium rows into acquisition-quality interpretation.",
-          "Promote behavior contradiction reads only after landing and source evidence confirm the same pattern.",
-        ]}
-      />
-
-      <SectionActionChecklist
-        title="Behavior next actions"
-        description="The fastest path to stronger behavior interpretation is correct project mapping plus fully hydrated GA4 evidence."
-        actions={[
-          "Confirm the active project still maps to the correct GA4 property.",
-          "Run sync after mapping is confirmed so landing and source rows can hydrate.",
-          "Validate that landing and acquisition evidence point to the same performance pattern before promotion.",
-          "Re-check the intelligence read after GA4 behavior evidence becomes materially available.",
-        ]}
-      />
-
-      <EvidenceLinkedNavPanel
-        title="Evidence-linked navigation"
-        description="Move from behavior into adjacent evidence layers."
-        items={[
-          {
-            label: "Open overview drilldown",
-            href: buildOverviewHref(navContext),
-            description:
-              "Review high-level evidence concentration across traffic, visibility, and landing quality.",
-          },
-          {
-            label: "Open SEO drilldown",
-            href: buildSeoHref(navContext),
-            description:
-              "Inspect query and page evidence that should align with behavioral performance.",
-          },
-          {
-            label: "Open intelligence read",
-            href: buildIntelligenceHref(navContext),
-            description:
-              "Review command center, hypotheses, outcomes, and execution intelligence.",
-          },
-        ]}
-      />
+      <section className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+        <h2 className="text-[34px] font-semibold text-white">Behavior next actions</h2>
+        <div className="mt-6 space-y-3">
+          {[
+            "Confirm the active project still maps to the correct GA4 property.",
+            "Run sync after mapping is confirmed so landing and source rows can hydrate.",
+            "Validate that landing and acquisition evidence point to the same performance pattern before promotion.",
+            "Re-check the intelligence read after GA4 behavior evidence becomes materially available.",
+          ].map((action, index) => (
+            <div
+              key={action}
+              className="rounded-[20px] border border-white/10 bg-white/[0.02] px-5 py-4 text-[16px] text-white/78"
+            >
+              {index + 1}. {action}
+            </div>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }

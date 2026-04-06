@@ -1,48 +1,120 @@
-import { requireSession } from "@/lib/auth";
-import { runGA4Sync } from "@/lib/sync/runners/ga4-runner";
-import { runGSCSync } from "@/lib/sync/runners/gsc-runner";
+import { getProjectMapping } from "@/lib/project/project-mapper";
+import { resolveWorkspaceToken } from "@/lib/integrations/workspace-token-resolver";
+import { runGA4Sync } from "@/lib/sync/providers/ga4-runner";
+import { runGSCSync } from "@/lib/sync/providers/gsc-runner";
 
-type RunFullSyncInput = {
-  workspaceId: string;
-  projectSlug: string;
-  from: string;
-  to: string;
-  sources: string[];
+export type SyncProviderResult = {
+  provider: "GOOGLE_GA4" | "GOOGLE_GSC";
+  status: "success" | "error" | "skipped";
+  rowsSynced?: number;
+  details?: Record<string, unknown>;
+  reason?: string;
 };
 
-export async function runFullSync(input: RunFullSyncInput) {
-  const session = await requireSession();
-  const normalizedSources = new Set(input.sources);
+export type FullSyncResult = {
+  projectId: string;
+  projectSlug: string;
+  projectLabel: string;
+  workspaceId: string;
+  from: string;
+  to: string;
+  results: SyncProviderResult[];
+};
 
-  const results = [];
+export async function runFullSync(params: {
+  workspaceId: string;
+  projectRef: string;
+  from: string;
+  to: string;
+}): Promise<FullSyncResult> {
+  const mapping = await getProjectMapping({
+    projectRef: params.projectRef,
+    workspaceId: params.workspaceId,
+  });
 
-  if (normalizedSources.has("google_ga4")) {
-    results.push(
-      await runGA4Sync({
-        session,
-        workspaceId: input.workspaceId,
-        projectSlug: input.projectSlug,
-        from: input.from,
-        to: input.to,
-      })
-    );
+  const results: SyncProviderResult[] = [];
+
+  if (mapping.ga4PropertyId) {
+    try {
+      const ga4Token = await resolveWorkspaceToken({
+        workspaceId: mapping.workspaceId,
+        acceptedProviders: ["GOOGLE_GA4"],
+      });
+
+      const output = await runGA4Sync({
+        accessToken: ga4Token,
+        propertyId: mapping.ga4PropertyId,
+        workspaceId: mapping.workspaceId,
+        projectId: mapping.projectSlug,
+        from: params.from,
+        to: params.to,
+      });
+
+      results.push({
+        provider: "GOOGLE_GA4",
+        status: "success",
+        rowsSynced: output.rowsSynced,
+        details: output as Record<string, unknown>,
+      });
+    } catch (error) {
+      results.push({
+        provider: "GOOGLE_GA4",
+        status: "error",
+        reason: error instanceof Error ? error.message : "GA4 sync failed.",
+      });
+    }
+  } else {
+    results.push({
+      provider: "GOOGLE_GA4",
+      status: "skipped",
+      reason: "The active project is not mapped to a GA4 property.",
+    });
   }
 
-  if (normalizedSources.has("google_gsc")) {
-    results.push(
-      await runGSCSync({
-        session,
-        workspaceId: input.workspaceId,
-        projectSlug: input.projectSlug,
-        from: input.from,
-        to: input.to,
-      })
-    );
+  if (mapping.gscSiteUrl) {
+    try {
+      const gscToken = await resolveWorkspaceToken({
+        workspaceId: mapping.workspaceId,
+        acceptedProviders: ["GOOGLE_GSC"],
+      });
+
+      const output = await runGSCSync({
+        accessToken: gscToken,
+        siteUrl: mapping.gscSiteUrl,
+        workspaceId: mapping.workspaceId,
+        projectId: mapping.projectSlug,
+        from: params.from,
+        to: params.to,
+      });
+
+      results.push({
+        provider: "GOOGLE_GSC",
+        status: "success",
+        rowsSynced: output.rowsSynced,
+        details: output as Record<string, unknown>,
+      });
+    } catch (error) {
+      results.push({
+        provider: "GOOGLE_GSC",
+        status: "error",
+        reason: error instanceof Error ? error.message : "GSC sync failed.",
+      });
+    }
+  } else {
+    results.push({
+      provider: "GOOGLE_GSC",
+      status: "skipped",
+      reason: "The active project is not mapped to a GSC site.",
+    });
   }
 
   return {
-    totalRowsProcessed: results.reduce((sum, item) => sum + item.rows, 0),
-    sourcesRun: results.map((item) => item.source),
+    projectId: mapping.projectId,
+    projectSlug: mapping.projectSlug,
+    projectLabel: mapping.projectLabel,
+    workspaceId: mapping.workspaceId,
+    from: params.from,
+    to: params.to,
     results,
   };
 }

@@ -1,84 +1,85 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { recordManualSyncRun } from "@/lib/sync/sync-run-recorder";
 import { runFullSync } from "@/lib/sync/sync-orchestrator";
+import { recordManualSyncRun } from "@/lib/sync/sync-run-recorder";
 
-type RequestBody = {
-  workspaceId?: string | null;
-  projectSlug?: string | null;
-  projectId?: string | null;
-  from?: string | null;
-  to?: string | null;
-  sources?: string[] | null;
-};
-
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    const body = (await request.json()) as RequestBody;
+    const workspaceId = session.user?.workspaceId;
 
-    const sessionWorkspaceId = session.user?.workspaceId ?? null;
-
-    if (!sessionWorkspaceId) {
+    if (!workspaceId) {
       return NextResponse.json(
-        { error: "Missing workspace context." },
+        { error: "Missing workspace context on the current session." },
         { status: 401 }
       );
     }
 
-    if (body.workspaceId && body.workspaceId !== sessionWorkspaceId) {
-      return NextResponse.json(
-        { error: "Workspace mismatch for sync request." },
-        { status: 403 }
-      );
-    }
+    const body = (await req.json().catch(() => ({}))) as {
+      project?: string;
+      projectId?: string;
+      projectSlug?: string;
+      from?: string;
+      to?: string;
+    };
 
-    const resolvedProjectSlug = body.projectSlug ?? body.projectId ?? null;
+    const projectRef =
+      body.projectSlug?.trim() ||
+      body.projectId?.trim() ||
+      body.project?.trim() ||
+      "";
 
-    if (!resolvedProjectSlug) {
+    const from = body.from?.trim() || "";
+    const to = body.to?.trim() || "";
+
+    if (!projectRef || !from || !to) {
       return NextResponse.json(
-        { error: "Project slug is required for entity sync." },
+        {
+          error:
+            "project, from, and to are required. The sync request payload is incomplete.",
+        },
         { status: 400 }
       );
     }
 
-    const summary = await runFullSync({
-      workspaceId: sessionWorkspaceId,
-      projectSlug: resolvedProjectSlug,
-      from: body.from ?? "",
-      to: body.to ?? "",
-      sources: body.sources ?? ["google_ga4", "google_gsc"],
+    const result = await runFullSync({
+      workspaceId,
+      projectRef,
+      from,
+      to,
     });
 
+    const totalRowsSynced = result.results.reduce((sum: number, item) => {
+      return item.status === "success" ? sum + (item.rowsSynced ?? 0) : sum;
+    }, 0);
+
     await recordManualSyncRun({
-      workspaceId: sessionWorkspaceId,
-      source: "google_ga4",
+      workspaceId,
+      source: "GOOGLE_GA4",
       status: "success",
-      rowsSynced: summary.totalRowsProcessed,
+      rowsSynced: totalRowsSynced,
       meta: {
-        projectSlug: resolvedProjectSlug,
-        from: body.from ?? "",
-        to: body.to ?? "",
-        sources: body.sources ?? ["google_ga4", "google_gsc"],
+        projectRef,
+        projectSlug: result.projectSlug,
+        from,
+        to,
+        providers: result.results,
       },
+      error: null,
     });
 
     return NextResponse.json({
       ok: true,
-      run: {
-        projectSlug: resolvedProjectSlug,
-        totalRowsProcessed: summary.totalRowsProcessed,
-        message:
-          "Sync completed. Data ingestion layer executed. Evidence will hydrate once normalized.",
-      },
-      summary,
+      ranAt: new Date().toISOString(),
+      rowsSynced: totalRowsSynced,
+      ...result,
     });
-  } catch (error: any) {
+  } catch (error) {
     return NextResponse.json(
       {
-        error: error?.message ?? "Entity sync failed.",
+        error: error instanceof Error ? error.message : "Sync failed.",
       },
-      { status: error?.status ?? 500 }
+      { status: 500 }
     );
   }
 }

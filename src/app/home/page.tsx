@@ -1,189 +1,172 @@
-import { getProjectIntelligenceForRange } from "@/lib/intelligence";
-import { resolveDateRange } from "@/lib/intelligence/date-range";
-import { buildFutureReadinessPanelData } from "@/lib/intelligence/future-readiness";
-import {
-  DateRangeToolbar,
-  DiagnosticsPanel,
-} from "@/lib/intelligence/ui";
-import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
-import { PageHero } from "@/components/shared/PageHero";
-import { KpiStrip } from "@/components/shared/KpiStrip";
-import { EvidenceCountGrid } from "@/components/shared/EvidenceCountGrid";
-import { SectionLinkRow } from "@/components/shared/SectionLinkRow";
-import { ReadinessBanner } from "@/components/shared/ReadinessBanner";
+import { requireSession } from "@/lib/auth";
+import { getProjectMapping } from "@/lib/project/project-mapper";
+import { getOverviewEvidenceSummary } from "@/lib/evidence/normalized-overview-store";
 
 type PageProps = {
   searchParams?: Promise<{
     project?: string;
-    workspace?: string;
-    preset?: string;
     from?: string;
     to?: string;
   }>;
 };
 
-function safeDiagnostics(intelligence: any) {
-  return (
-    intelligence?.diagnostics ?? {
-      overview: {
-        title: "Overview",
-        summary:
-          "Evidence-backed diagnostic summary is not yet available for this project and date range.",
-        confidence: "low",
-        actions: [
-          "Run entity sync to populate evidence rows.",
-          "Deepen synced range so stronger project signals can be ranked.",
-        ],
-      },
-    }
-  );
+function shiftDate(base: Date, offsetDays: number) {
+  const next = new Date(base);
+  next.setDate(next.getDate() + offsetDays);
+  return next;
 }
 
-export default async function HomePage({ searchParams }: PageProps) {
-  const params = (await searchParams) ?? {};
+function formatDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
 
-  const selectedProject = await resolveSelectedProject({
-    workspaceId: params.workspace ?? null,
-    projectSlug: params.project ?? null,
+function nextActionList(summary: Awaited<ReturnType<typeof getOverviewEvidenceSummary>>) {
+  const actions: string[] = [];
+
+  if (summary.ga4SourceRows === 0) actions.push("Hydrate GA4 source / medium rows into overview evidence.");
+  if (summary.ga4LandingRows === 0) actions.push("Hydrate GA4 landing page rows into overview evidence.");
+  if (summary.gscQueryRows === 0) actions.push("Hydrate GSC query rows into overview evidence.");
+  if (summary.gscPageRows === 0) actions.push("Hydrate GSC page rows into overview evidence.");
+
+  if (actions.length === 0) {
+    actions.push("Review cross-source concentration and start ranking stronger overview hypotheses.");
+  }
+
+  return actions;
+}
+
+export default async function HomePage(props: PageProps) {
+  const session = await requireSession();
+  const workspaceId = session.user?.workspaceId;
+
+  if (!workspaceId) {
+    throw new Error("Missing workspace context on the current session.");
+  }
+
+  const searchParams = (await props.searchParams) ?? {};
+  const today = new Date();
+  const defaultFrom = formatDate(shiftDate(today, -29));
+  const defaultTo = formatDate(today);
+
+  const projectRef = searchParams.project ?? "zt";
+  const from = searchParams.from ?? defaultFrom;
+  const to = searchParams.to ?? defaultTo;
+
+  const project = await getProjectMapping({
+    projectRef,
+    workspaceId,
   });
 
-  const dateRange = resolveDateRange({
-    preset: params.preset,
-    from: params.from,
-    to: params.to,
+  const summary = await getOverviewEvidenceSummary({
+    workspaceId,
+    projectId: project.projectSlug,
+    from,
+    to,
   });
 
-  const intelligence = (await getProjectIntelligenceForRange({
-    workspaceId: selectedProject?.workspaceId ?? params.workspace ?? null,
-    projectSlug: selectedProject?.slug ?? params.project ?? null,
-    preset: params.preset,
-    from: params.from,
-    to: params.to,
-  })) as any;
+  const totalRows =
+    summary.ga4SourceRows +
+    summary.ga4LandingRows +
+    summary.gscQueryRows +
+    summary.gscPageRows;
 
-  const project = intelligence?.project ?? selectedProject ?? null;
-  const diagnostics = safeDiagnostics(intelligence);
-  const evidence = intelligence?.evidence ?? {};
-  const futureReadiness = buildFutureReadinessPanelData();
+  const evidenceStatus =
+    totalRows === 0 ? "No diagnostics available" : "Evidence available for overview interpretation";
 
-  const queryRows = Array.isArray(evidence?.gscQueryRows)
-    ? evidence.gscQueryRows.length
-    : 0;
-  const pageRows = Array.isArray(evidence?.gscPageRows)
-    ? evidence.gscPageRows.length
-    : 0;
-  const landingRows = Array.isArray(evidence?.ga4Landings)
-    ? evidence.ga4Landings.length
-    : 0;
-  const sourceRows = Array.isArray(evidence?.ga4SourceRows)
-    ? evidence.ga4SourceRows.length
-    : 0;
+  const actions = nextActionList(summary);
 
   return (
     <main className="space-y-8">
-      <DateRangeToolbar
-        basePath="/home"
-        projectSlug={selectedProject?.slug ?? params.project ?? null}
-        workspaceId={selectedProject?.workspaceId ?? params.workspace ?? null}
-        range={dateRange}
-      />
+      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,32,75,0.62),rgba(4,10,24,0.88))] p-8">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-200/80">Anitrya intelligence</div>
+            <h1 className="mt-4 text-5xl font-semibold tracking-tight text-white">Project overview</h1>
+            <p className="mt-4 max-w-[900px] text-[18px] leading-8 text-white/76">
+              Evidence-backed overview across traffic, search visibility, behavior quality, and future expansion readiness.
+            </p>
+          </div>
 
-      <PageHero
-        eyebrow="Anitrya intelligence"
-        title="Project overview"
-        body="Evidence-backed overview across traffic, search visibility, behavior quality, and future expansion readiness."
-        projectLabel={project?.name ?? "No project selected"}
-        projectSubtext={
-          project?.slug
-            ? `Slug: ${project.slug}`
-            : "Select a project to load project-scoped evidence."
-        }
-      />
+          <div className="rounded-[24px] border border-cyan-400/20 bg-cyan-400/10 px-6 py-5 text-right">
+            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-100/70">Active project</div>
+            <div className="mt-3 text-[34px] font-semibold text-white">{project.projectLabel}</div>
+            <div className="mt-1 text-sm text-white/55">ACTIVE PROJECT • {project.projectSlug}</div>
+          </div>
+        </div>
+      </section>
 
-      <KpiStrip
-        items={[
-          {
-            label: "GA4 source rows",
-            value: sourceRows,
-            context: "Traffic-source evidence available in the current range",
-          },
-          {
-            label: "GA4 landing rows",
-            value: landingRows,
-            context: "Landing-page quality evidence currently available",
-          },
-          {
-            label: "GSC query rows",
-            value: queryRows,
-            context: "Search-demand rows captured for the selected range",
-          },
-          {
-            label: "GSC page rows",
-            value: pageRows,
-            context: "Search page-evidence rows available for diagnostics",
-          },
-        ]}
-      />
+      <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "GA4 source rows", value: summary.ga4SourceRows, helper: "Traffic-source evidence available in the current range" },
+          { label: "GA4 landing rows", value: summary.ga4LandingRows, helper: "Landing-page quality evidence currently available" },
+          { label: "GSC query rows", value: summary.gscQueryRows, helper: "Search-demand rows captured for the selected range" },
+          { label: "GSC page rows", value: summary.gscPageRows, helper: "Search page-evidence rows available for diagnostics" },
+        ].map((item) => (
+          <div key={item.label} className="rounded-[26px] border border-white/10 bg-black/14 p-6">
+            <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
+            <div className="mt-5 text-[56px] font-semibold leading-none text-white">{item.value}</div>
+            <p className="mt-5 text-[16px] leading-7 text-white/68">{item.helper}</p>
+          </div>
+        ))}
+      </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <EvidenceCountGrid
-          title="Overview evidence concentration"
-          subtitle="High-level evidence coverage across the currently connected sources."
-          cards={[
-            {
-              label: "Search demand",
-              value: queryRows,
-              body: "Query-level GSC evidence available for ranked search interpretation.",
-            },
-            {
-              label: "Search pages",
-              value: pageRows,
-              body: "Page-level GSC evidence available for visibility and landing alignment review.",
-            },
-            {
-              label: "Landing quality",
-              value: landingRows,
-              body: "GA4 landing rows available for page-level quality interpretation.",
-            },
-            {
-              label: "Acquisition mix",
-              value: sourceRows,
-              body: "GA4 source / medium rows available for traffic-quality interpretation.",
-            },
-          ]}
-        />
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.65fr_1fr]">
+        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+          <h2 className="text-[34px] font-semibold text-white">Overview evidence concentration</h2>
+          <p className="mt-2 text-[15px] text-white/68">
+            High-level evidence coverage across the currently connected sources.
+          </p>
 
-        <DiagnosticsPanel
-          title="Overview interpretation"
-          subtitle="Evidence-backed read of the current project condition."
-          diagnostic={diagnostics.overview}
-        />
-      </div>
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Search demand", value: summary.gscQueryRows, helper: "Query-level GSC evidence available for ranked search interpretation." },
+              { label: "Search pages", value: summary.gscPageRows, helper: "Page-level GSC evidence available for visibility and landing alignment review." },
+              { label: "Landing quality", value: summary.ga4LandingRows, helper: "GA4 landing rows available for page-level quality interpretation." },
+              { label: "Acquisition mix", value: summary.ga4SourceRows, helper: "GA4 source / medium rows available for traffic-quality interpretation." },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
+                <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
+                <div className="mt-3 text-[44px] font-semibold leading-none text-white">{item.value}</div>
+                <div className="mt-4 text-[15px] leading-7 text-white/64">{item.helper}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <ReadinessBanner
-        title="Future market context"
-        subtitle="Preserved intelligence layers for Google Business Profile, Google Ads, Google Trends, and competitor context."
-        cards={futureReadiness.cards}
-      />
+        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+          <h2 className="text-[34px] font-semibold text-white">Overview interpretation</h2>
+          <p className="mt-2 text-[15px] text-white/68">
+            Evidence-backed read of the current project condition.
+          </p>
 
-      <SectionLinkRow
-        title="Evidence-linked navigation"
-        subtitle="Move from overview into deeper evidence layers."
-        links={[
-          {
-            label: "Open SEO drilldown",
-            href: `/home/seo?project=${selectedProject?.slug ?? ""}`,
-          },
-          {
-            label: "Open behavior drilldown",
-            href: `/home/behavior?project=${selectedProject?.slug ?? ""}`,
-          },
-          {
-            label: "Open intelligence read",
-            href: `/home/intelligence?project=${selectedProject?.slug ?? ""}`,
-          },
-        ]}
-      />
+          <div className="mt-8 rounded-[24px] border border-white/10 bg-white/[0.02] p-6">
+            <div className="text-[22px] font-semibold text-white">{evidenceStatus}</div>
+            <div className="mt-4 text-[16px] leading-8 text-white/68">
+              {totalRows === 0
+                ? "Evidence is still limited for this section. Run sync and review connected sources."
+                : `The current range contains ${totalRows} normalized evidence rows across GA4 and Search Console.`}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+        <h2 className="text-[34px] font-semibold text-white">Overview next actions</h2>
+        <p className="mt-2 text-[15px] text-white/68">
+          The product should always end with what the team should do next.
+        </p>
+
+        <div className="mt-6 space-y-3">
+          {actions.map((action, index) => (
+            <div
+              key={action}
+              className="rounded-[20px] border border-white/10 bg-white/[0.02] px-5 py-4 text-[16px] text-white/78"
+            >
+              {index + 1}. {action}
+            </div>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }

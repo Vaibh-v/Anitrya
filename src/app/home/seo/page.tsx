@@ -1,277 +1,158 @@
 import { requireSession } from "@/lib/auth";
-import { resolveDateRange } from "@/lib/intelligence/date-range";
-import { DateRangeToolbar } from "@/lib/intelligence/ui";
-import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
-import {
-  buildSeoConnectedSources,
-  buildSeoReadinessCards,
-} from "@/lib/intelligence/section-readiness";
-import {
-  buildBehaviorHref,
-  buildIntelligenceHref,
-  buildOverviewHref,
-} from "@/lib/intelligence/navigation-links";
-import { ProjectContextSection } from "@/components/shared/ProjectContextSection";
-import { EvidencePageHero } from "@/components/shared/EvidencePageHero";
-import { ProjectMappingHealthPanel } from "@/components/shared/ProjectMappingHealthPanel";
-import { ProjectSyncReadinessBanner } from "@/components/shared/ProjectSyncReadinessBanner";
-import { EvidenceLinkedNavPanel } from "@/components/shared/EvidenceLinkedNavPanel";
-import { EvidenceCoveragePanel } from "@/components/shared/EvidenceCoveragePanel";
-import { SectionInterpretationPanel } from "@/components/shared/SectionInterpretationPanel";
-import { SectionFindingsPanel } from "@/components/shared/SectionFindingsPanel";
-import { SectionStatCards } from "@/components/shared/SectionStatCards";
-import { SectionUnlockPanel } from "@/components/shared/SectionUnlockPanel";
-import { ReadinessMatrixPanel } from "@/components/shared/ReadinessMatrixPanel";
-import { ConnectedSourcesPanel } from "@/components/shared/ConnectedSourcesPanel";
-import { SectionActionChecklist } from "@/components/shared/SectionActionChecklist";
+import { getProjectMapping } from "@/lib/project/project-mapper";
+import { getSeoEvidenceSummary } from "@/lib/evidence/normalized-seo-store";
 
 type PageProps = {
   searchParams?: Promise<{
     project?: string;
-    workspace?: string;
-    preset?: string;
     from?: string;
     to?: string;
-    projectName?: string;
   }>;
 };
 
-export default async function SeoPage({ searchParams }: PageProps) {
-  const params = (await searchParams) ?? {};
+function shiftDate(base: Date, offsetDays: number) {
+  const next = new Date(base);
+  next.setDate(next.getDate() + offsetDays);
+  return next;
+}
+
+function formatDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+export default async function SeoPage(props: PageProps) {
   const session = await requireSession();
+  const workspaceId = session.user?.workspaceId;
 
-  const selectedProject = resolveSelectedProject({
-    requestedProjectId: params.project ?? null,
-    requestedProjectName: params.projectName ?? null,
-    sessionWorkspaceId: session.user?.workspaceId ?? params.workspace ?? null,
-    fallbackProjectId: "default-project",
-  });
+  if (!workspaceId) {
+    throw new Error("Missing workspace context on the current session.");
+  }
 
-  const dateRange = resolveDateRange({
-    preset: params.preset,
-    from: params.from,
-    to: params.to,
-  });
+  const searchParams = (await props.searchParams) ?? {};
+  const today = new Date();
+  const defaultFrom = formatDate(shiftDate(today, -29));
+  const defaultTo = formatDate(today);
 
-  const projectId = selectedProject.projectId;
-  const projectLabel = selectedProject.displayName;
-  const workspaceId = session.user?.workspaceId ?? params.workspace ?? null;
+  const projectRef = searchParams.project ?? "zt";
+  const from = searchParams.from ?? defaultFrom;
+  const to = searchParams.to ?? defaultTo;
 
-  const navContext = {
-    projectId,
+  const project = await getProjectMapping({
+    projectRef,
     workspaceId,
-    preset: params.preset,
-    from: params.from,
-    to: params.to,
-  };
+  });
+
+  const summary = await getSeoEvidenceSummary({
+    workspaceId,
+    projectId: project.projectSlug,
+    from,
+    to,
+  });
+
+  const confidence =
+    summary.queryRows > 0 && summary.pageRows > 0
+      ? "medium"
+      : summary.queryRows > 0 || summary.pageRows > 0
+        ? "low"
+        : "low";
 
   return (
     <main className="space-y-8">
-      <ProjectContextSection
-        activeProjectLabel={projectLabel}
-        activeProjectId={selectedProject.hasProject ? projectId : null}
-        cards={[
-          {
-            label: "Clara AI",
-            ga4Label: "Clara Ai",
-            gscLabel: "sc-domain:justclara.ai",
-            href: "/home/seo?project=clara-ai",
-            selected: projectLabel === "Clara AI",
-          },
-          {
-            label: "ZT",
-            ga4Label: "ZenTrades",
-            gscLabel: "sc-domain:zentrades.pro",
-            href: "/home/seo?project=zt",
-            selected: projectId === "zt",
-          },
-        ]}
-      />
+      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,32,75,0.62),rgba(4,10,24,0.88))] p-8">
+        <div className="flex items-start justify-between gap-6">
+          <div>
+            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-200/80">Anitrya intelligence</div>
+            <h1 className="mt-4 text-5xl font-semibold tracking-tight text-white">SEO evidence</h1>
+            <p className="mt-4 max-w-[900px] text-[18px] leading-8 text-white/76">
+              Search-demand and search-page interpretation built from normalized Search Console evidence.
+            </p>
+          </div>
 
-      <DateRangeToolbar
-        basePath="/home/seo"
-        projectSlug={projectId}
-        workspaceId={workspaceId}
-        range={dateRange}
-      />
+          <div className="rounded-[24px] border border-cyan-400/20 bg-cyan-400/10 px-6 py-5 text-right">
+            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-100/70">Active project</div>
+            <div className="mt-3 text-[34px] font-semibold text-white">{project.projectLabel}</div>
+            <div className="mt-1 text-sm text-white/55">ACTIVE PROJECT • {project.projectSlug}</div>
+          </div>
+        </div>
+      </section>
 
-      <EvidencePageHero
-        eyebrow="Anitrya Intelligence"
-        title="SEO evidence"
-        description="Search-demand and search-page interpretation built from normalized Search Console evidence."
-        projectLabel={projectLabel}
-        projectId={projectId}
-      />
+      <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "Query rows", value: summary.queryRows, helper: "Available query-level evidence for the current range" },
+          { label: "Page rows", value: summary.pageRows, helper: "Available page-level evidence for the current range" },
+          { label: "Entity findings", value: summary.queryRows + summary.pageRows, helper: "Structured SEO findings currently rankable once interpretation deepens" },
+          { label: "Confidence", value: confidence, helper: "Current ranked confidence for SEO interpretation" },
+        ].map((item) => (
+          <div key={item.label} className="rounded-[26px] border border-white/10 bg-black/14 p-6">
+            <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
+            <div className="mt-5 text-[56px] font-semibold leading-none text-white">{item.value}</div>
+            <p className="mt-5 text-[16px] leading-7 text-white/68">{item.helper}</p>
+          </div>
+        ))}
+      </section>
 
-      <ProjectMappingHealthPanel
-        description="SEO accuracy depends on the active project remaining mapped to the correct GSC site and preserving the same project context as Intelligence."
-        items={[
-          {
-            label: "Project",
-            value: projectLabel || "unresolved",
-            tone: projectLabel ? "ready" : "missing",
-            context: "Current business context selected for the SEO read.",
-          },
-          {
-            label: "Project id",
-            value: projectId || "unresolved",
-            tone: projectId ? "ready" : "missing",
-            context: "The project slug currently passed through the SEO layer.",
-          },
-          {
-            label: "Workspace",
-            value: workspaceId || "missing",
-            tone: workspaceId ? "ready" : "missing",
-            context: "Workspace identity used to preserve project context across tabs.",
-          },
-          {
-            label: "Date range",
-            value: `${dateRange.from} → ${dateRange.to}`,
-            tone: "ready",
-            context: "The current evidence window used to evaluate search coverage.",
-          },
-        ]}
-      />
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_1fr]">
+        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+          <h2 className="text-[34px] font-semibold text-white">SEO evidence coverage</h2>
+          <p className="mt-2 text-[15px] text-white/68">
+            Coverage across demand capture and page-level search visibility.
+          </p>
 
-      <ReadinessMatrixPanel
-        title="SEO readiness"
-        description="A shared view of what is structurally ready versus still blocked across the SEO layer."
-        items={buildSeoReadinessCards()}
-      />
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Query evidence", value: summary.queryRows, helper: "Search demand capture evidence used for topic, CTR, and impression interpretation." },
+              { label: "Page evidence", value: summary.pageRows, helper: "Page-level visibility evidence used for ranking and page-priority interpretation." },
+              { label: "Best next step", value: "CTR / rank focus", helper: "Use query and page concentration to find stronger confirming patterns." },
+              { label: "Readiness", value: summary.queryRows + summary.pageRows > 0 ? "partial" : "thin", helper: "Indicates whether SEO evidence is deep enough for stronger ranking." },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
+                <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
+                <div className="mt-3 text-[44px] font-semibold leading-none text-white">{item.value}</div>
+                <div className="mt-4 text-[15px] leading-7 text-white/64">{item.helper}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <SectionStatCards
-        items={[
-          {
-            label: "Query rows",
-            value: 0,
-            context: "Available query-level evidence for the current range.",
-          },
-          {
-            label: "Page rows",
-            value: 0,
-            context: "Available page-level evidence for the current range.",
-          },
-          {
-            label: "Entity findings",
-            value: 0,
-            context: "Structured SEO findings currently ranked.",
-          },
-          {
-            label: "Confidence",
-            value: "low",
-            context: "Current ranked confidence for SEO interpretation.",
-          },
-        ]}
-      />
+        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+          <h2 className="text-[34px] font-semibold text-white">SEO interpretation</h2>
+          <p className="mt-2 text-[15px] text-white/68">
+            Current SEO contribution to the total intelligence read.
+          </p>
 
-      <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
-        <EvidenceCoveragePanel
-          title="SEO evidence coverage"
-          description="Coverage across demand capture and page-level search visibility."
-          cards={[
-            {
-              label: "Query evidence",
-              value: 0,
-              context:
-                "Search demand capture evidence used for topic, CTR, and impression interpretation.",
-            },
-            {
-              label: "Page evidence",
-              value: 0,
-              context:
-                "Page-level visibility evidence used for ranking and page-priority interpretation.",
-            },
-            {
-              label: "Best next step",
-              value: "CTR / rank focus",
-              context:
-                "Use query and page concentration to find stronger confirming patterns.",
-            },
-            {
-              label: "Readiness",
-              value: "thin",
-              context:
-                "Indicates whether SEO evidence is deep enough for stronger ranking.",
-            },
-          ]}
-        />
+          <div className="mt-8 rounded-[24px] border border-white/10 bg-white/[0.02] p-6">
+            <div className="text-[22px] font-semibold text-white">
+              {summary.queryRows + summary.pageRows === 0
+                ? "No diagnostics available"
+                : "SEO evidence is available"}
+            </div>
+            <div className="mt-4 text-[16px] leading-8 text-white/68">
+              {summary.queryRows + summary.pageRows === 0
+                ? "Evidence is still limited for this section. Run sync and review connected sources."
+                : `The current range contains ${summary.queryRows} query rows and ${summary.pageRows} page rows for ranked interpretation.`}
+            </div>
+          </div>
+        </div>
+      </section>
 
-        <SectionInterpretationPanel
-          title="SEO interpretation"
-          description="Current SEO contribution to the total intelligence read."
-          emptyTitle="No diagnostics available"
-          emptyDescription="Evidence is still limited for this section. Run sync and review connected sources."
-        />
-      </div>
-
-      <SectionFindingsPanel
-        title="SEO findings"
-        description="Structured search findings from the current evidence set."
-        emptyTitle="No findings yet"
-        emptyDescription="Structured search findings will appear here as entity-level evidence deepens."
-      />
-
-      <ConnectedSourcesPanel
-        title="Connected sources"
-        description="Current status of the sources that should eventually power stronger SEO interpretation."
-        items={buildSeoConnectedSources()}
-      />
-
-      <ProjectSyncReadinessBanner
-        summary="The SEO section is ready to accept normalized Search Console evidence, but query and page rows are still missing in the current read."
-        statuses={[
-          { label: "Query evidence missing", tone: "missing" },
-          { label: "Page evidence missing", tone: "missing" },
-          { label: "SEO section ready", tone: "partial" },
-          { label: "Intelligence linked", tone: "ready" },
-        ]}
-      />
-
-      <SectionUnlockPanel
-        title="What unlocks stronger SEO interpretation"
-        description="SEO ranking quality improves only when normalized Search Console evidence is materially available."
-        unlocks={[
-          "Hydrate normalized query rows into search-demand interpretation.",
-          "Hydrate normalized page rows into page-priority interpretation.",
-          "Promote SEO contradiction reads only after query and page evidence confirm the same pattern.",
-        ]}
-      />
-
-      <SectionActionChecklist
-        title="SEO next actions"
-        description="The fastest path to stronger SEO interpretation is correct project mapping plus fully hydrated GSC evidence."
-        actions={[
-          "Confirm the active project still maps to the correct Search Console property.",
-          "Run sync after mapping is confirmed so query and page rows can hydrate.",
-          "Validate that query and page evidence point to the same ranking pattern before promotion.",
-          "Re-check the intelligence read after GSC evidence becomes materially available.",
-        ]}
-      />
-
-      <EvidenceLinkedNavPanel
-        title="Evidence-linked navigation"
-        description="Move from SEO into adjacent evidence layers."
-        items={[
-          {
-            label: "Open overview drilldown",
-            href: buildOverviewHref(navContext),
-            description:
-              "Review the project-wide concentration of search, landing, and acquisition evidence.",
-          },
-          {
-            label: "Open behavior drilldown",
-            href: buildBehaviorHref(navContext),
-            description:
-              "Inspect landing and acquisition-quality evidence that should align with search intent.",
-          },
-          {
-            label: "Open intelligence read",
-            href: buildIntelligenceHref(navContext),
-            description:
-              "Review command center, hypotheses, outcomes, and execution intelligence.",
-          },
-        ]}
-      />
+      <section className="rounded-[28px] border border-white/10 bg-black/14 p-7">
+        <h2 className="text-[34px] font-semibold text-white">SEO next actions</h2>
+        <div className="mt-6 space-y-3">
+          {[
+            "Confirm the active project still maps to the correct Search Console property.",
+            "Run sync after mapping is confirmed so query and page rows can hydrate.",
+            "Validate that query and page evidence point to the same ranking pattern before promotion.",
+            "Re-check the intelligence read after GSC evidence becomes materially available.",
+          ].map((action, index) => (
+            <div
+              key={action}
+              className="rounded-[20px] border border-white/10 bg-white/[0.02] px-5 py-4 text-[16px] text-white/78"
+            >
+              {index + 1}. {action}
+            </div>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }
