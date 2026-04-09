@@ -7,6 +7,13 @@ type PanelState =
   | { status: "success"; message: string }
   | { status: "error"; message: string };
 
+type SyncResult = {
+  provider: string;
+  status: "success" | "error" | "skipped";
+  rowsSynced?: number;
+  reason?: string;
+};
+
 export type EntitySyncPanelProps = {
   projectSlug: string;
   projectLabel: string;
@@ -59,10 +66,6 @@ export function EntitySyncPanel({
 
     try {
       setLoading(true);
-      setState({
-        status: "idle",
-        message: "Running normalized sync for the active project...",
-      });
 
       const response = await fetch("/api/sync/run", {
         method: "POST",
@@ -76,23 +79,40 @@ export function EntitySyncPanel({
         }),
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        results?: SyncResult[];
+      };
 
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Sync failed.");
+      if (!response.ok && response.status !== 207) {
+        throw new Error(payload.error ?? "Sync failed.");
       }
 
-      const providerSummary = Array.isArray(payload?.results)
-        ? payload.results
-            .map((item: any) =>
-              `${item.provider}: ${item.status}${typeof item.rowsSynced === "number" ? ` (${item.rowsSynced})` : ""}`
-            )
-            .join(" · ")
-        : "Sync completed.";
+      const results = payload.results ?? [];
+      if (!results.length) {
+        setState({
+          status: "success",
+          message: "Sync completed.",
+        });
+        return;
+      }
+
+      const failures = results.filter((item) => item.status === "error");
+      const summary = results
+        .map((item) => {
+          if (item.status === "success") {
+            return `${item.provider}: success (${item.rowsSynced ?? 0})`;
+          }
+          if (item.status === "skipped") {
+            return `${item.provider}: skipped${item.reason ? ` (${item.reason})` : ""}`;
+          }
+          return `${item.provider}: ${item.reason ?? "error"}`;
+        })
+        .join(" · ");
 
       setState({
-        status: "success",
-        message: providerSummary,
+        status: failures.length > 0 ? "error" : "success",
+        message: summary,
       });
     } catch (error) {
       setState({
@@ -105,37 +125,40 @@ export function EntitySyncPanel({
   }
 
   return (
-    <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,32,75,0.62),rgba(4,10,24,0.88))] p-6">
-      <div className="mb-6 flex items-start justify-between gap-4">
+    <section className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,34,79,0.88),rgba(5,15,39,0.94))] px-8 py-8">
+      <div className="flex items-start justify-between gap-6">
         <div>
-          <h3 className="text-[34px] font-semibold text-white">Entity sync control</h3>
-          <p className="mt-2 max-w-[880px] text-[15px] text-white/72">
+          <h2 className="text-[32px] font-semibold tracking-[-0.03em] text-white">
+            Entity sync control
+          </h2>
+          <p className="mt-3 text-[18px] leading-8 text-white/72">
             Run project-scoped evidence sync before intelligence interpretation and export.
           </p>
         </div>
-        <div className="rounded-full border border-white/10 px-5 py-3 text-[15px] text-white/72">
+
+        <div className="rounded-full border border-white/10 bg-white/4 px-5 py-3 text-[16px] text-white/78">
           {projectLabel}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1fr_auto]">
+      <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1fr_auto]">
         <label className="flex flex-col gap-3">
-          <span className="text-[12px] uppercase tracking-[0.32em] text-white/46">From</span>
+          <span className="text-[12px] uppercase tracking-[0.3em] text-white/48">From</span>
           <input
             type="date"
             value={from}
             onChange={(event) => setFrom(event.target.value)}
-            className="h-16 rounded-[20px] border border-white/12 bg-white/6 px-6 text-[18px] text-white outline-none"
+            className="h-16 rounded-[18px] border border-white/12 bg-white/4 px-5 text-[18px] text-white outline-none"
           />
         </label>
 
         <label className="flex flex-col gap-3">
-          <span className="text-[12px] uppercase tracking-[0.32em] text-white/46">To</span>
+          <span className="text-[12px] uppercase tracking-[0.3em] text-white/48">To</span>
           <input
             type="date"
             value={to}
             onChange={(event) => setTo(event.target.value)}
-            className="h-16 rounded-[20px] border border-white/12 bg-white/6 px-6 text-[18px] text-white outline-none"
+            className="h-16 rounded-[18px] border border-white/12 bg-white/4 px-5 text-[18px] text-white outline-none"
           />
         </label>
 
@@ -144,37 +167,37 @@ export function EntitySyncPanel({
             type="button"
             onClick={handleRun}
             disabled={loading}
-            className="h-16 rounded-[20px] border border-cyan-400/40 bg-cyan-400/10 px-8 text-[16px] font-semibold text-cyan-100 disabled:opacity-60"
+            className="h-16 rounded-[18px] border border-cyan-300/30 bg-cyan-300/10 px-8 text-[18px] font-semibold text-cyan-100 disabled:opacity-60"
           >
             {loading ? "Running sync..." : "Run entity sync"}
           </button>
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-          <div className="text-[12px] uppercase tracking-[0.32em] text-white/46">Project</div>
-          <div className="mt-3 text-[20px] font-semibold text-white">{projectLabel}</div>
+          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Project</div>
+          <div className="mt-4 text-[20px] font-semibold text-white">{projectLabel}</div>
         </div>
 
         <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-          <div className="text-[12px] uppercase tracking-[0.32em] text-white/46">Project ID</div>
-          <div className="mt-3 text-[20px] font-semibold text-white">{projectSlug}</div>
+          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Project ID</div>
+          <div className="mt-4 text-[20px] font-semibold text-white">{projectSlug}</div>
         </div>
 
         <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-          <div className="text-[12px] uppercase tracking-[0.32em] text-white/46">Range</div>
-          <div className="mt-3 text-[20px] font-semibold text-white">{rangeLabel}</div>
+          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Range</div>
+          <div className="mt-4 text-[20px] font-semibold text-white">{rangeLabel}</div>
         </div>
       </div>
 
       <div
-        className={`mt-6 rounded-[22px] border px-6 py-5 text-[15px] ${
+        className={`mt-6 rounded-[22px] border px-5 py-5 text-[16px] leading-8 ${
           state.status === "error"
-            ? "border-rose-400/30 bg-rose-400/10 text-rose-100"
+            ? "border-rose-400/25 bg-rose-400/10 text-rose-100"
             : state.status === "success"
-              ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100"
-              : "border-white/10 bg-black/10 text-white/72"
+              ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100"
+              : "border-white/10 bg-white/4 text-white/72"
         }`}
       >
         {state.message}

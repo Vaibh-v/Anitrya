@@ -1,19 +1,31 @@
 import type { NextAuthOptions } from "next-auth";
 import { getServerSession } from "next-auth";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { IntegrationProvider } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ensureWorkspaceForUser } from "@/lib/workspace";
 import { authProviders } from "@/lib/auth.config";
+import { encryptSecret } from "@/lib/security/crypto";
 
-function integrationProviderFor(provider?: string) {
-  if (provider === "google-gsc") return "GOOGLE_GSC" as const;
-  if (provider === "google-ga4") return "GOOGLE_GA4" as const;
-  return null;
+const GOOGLE_WORKSPACE_PROVIDERS: IntegrationProvider[] = [
+  IntegrationProvider.GOOGLE_GA4,
+  IntegrationProvider.GOOGLE_GSC,
+];
+
+function mergeScopes(existing: string | null | undefined, next: string | null | undefined) {
+  const scopes = new Set(
+    [existing, next]
+      .flatMap((value) => (value ?? "").split(/[\s,]+/))
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+
+  return scopes.size > 0 ? Array.from(scopes).join(" ") : null;
 }
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "database" },
+  session: { strategy: "jwt" },
   providers: authProviders,
   callbacks: {
     async signIn({ user, account }) {
@@ -37,53 +49,98 @@ export const authOptions: NextAuthOptions = {
         email: dbUser.email,
       });
 
-      const provider = integrationProviderFor(account?.provider);
-
-      if (provider) {
-        await prisma.integrationToken.upsert({
+      if (account?.provider === "google") {
+        const existingTokens = await prisma.integrationToken.findMany({
           where: {
-            workspaceId_provider: {
-              workspaceId: workspace.id,
-              provider,
+            workspaceId: workspace.id,
+            provider: {
+              in: GOOGLE_WORKSPACE_PROVIDERS,
             },
           },
-          update: {
-            accessToken: account?.access_token ?? null,
-            refreshToken: account?.refresh_token ?? null,
-            expiresAt: account?.expires_at ?? null,
-            scope: account?.scope ?? null,
-            userId: dbUser.id,
-          },
-          create: {
-            workspaceId: workspace.id,
-            provider,
-            accessToken: account?.access_token ?? null,
-            refreshToken: account?.refresh_token ?? null,
-            expiresAt: account?.expires_at ?? null,
-            scope: account?.scope ?? null,
-            userId: dbUser.id,
-          },
         });
+
+        const existingByProvider = new Map(
+          existingTokens.map((token) => [token.provider, token])
+        );
+
+        const nextAccessToken = account.access_token
+          ? encryptSecret(account.access_token)
+          : null;
+
+        const nextRefreshToken = account.refresh_token
+          ? encryptSecret(account.refresh_token)
+          : null;
+
+        await Promise.all(
+          GOOGLE_WORKSPACE_PROVIDERS.map((provider) => {
+            const existing = existingByProvider.get(provider);
+
+            return prisma.integrationToken.upsert({
+              where: {
+                workspaceId_provider: {
+                  workspaceId: workspace.id,
+                  provider,
+                },
+              },
+              update: {
+                accessToken: nextAccessToken ?? existing?.accessToken ?? null,
+                refreshToken: nextRefreshToken ?? existing?.refreshToken ?? null,
+                expiresAt:
+                  typeof account.expires_at === "number"
+                    ? account.expires_at
+                    : existing?.expiresAt ?? null,
+                scope: mergeScopes(existing?.scope, account.scope),
+                userId: dbUser.id,
+              },
+              create: {
+                workspaceId: workspace.id,
+                provider,
+                accessToken: nextAccessToken,
+                refreshToken: nextRefreshToken,
+                expiresAt:
+                  typeof account.expires_at === "number"
+                    ? account.expires_at
+                    : null,
+                scope: mergeScopes(null, account.scope),
+                userId: dbUser.id,
+              },
+            });
+          })
+        );
       }
 
       return true;
     },
 
-    async session({ session }) {
-      if (!session.user?.email) return session;
-
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-      });
-
-      if (user) {
-        const workspace = await ensureWorkspaceForUser({
-          userId: user.id,
-          email: user.email,
+    async jwt({ token, user }) {
+      if (user?.email) {
+        const dbUser = await prisma.user.findUnique({
+          where: { email: user.email },
         });
 
-        session.user.id = user.id;
-        session.user.workspaceId = workspace.id;
+        if (dbUser) {
+          const workspace = await ensureWorkspaceForUser({
+            userId: dbUser.id,
+            email: dbUser.email,
+          });
+
+          token.userId = dbUser.id;
+          token.workspaceId = workspace.id;
+        }
+      }
+
+      return token;
+    },
+
+    async session({ session, token }) {
+      if (!session.user) return session;
+
+      if (typeof token.userId === "string") {
+        session.user.id = token.userId;
+      }
+
+      if (typeof token.workspaceId === "string") {
+        session.user.workspaceId = token.workspaceId;
       }
 
       return session;

@@ -1,108 +1,52 @@
+import Link from "next/link";
 import { ReactNode } from "react";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { ensureWorkspaceForUser } from "@/lib/workspace";
-import { prisma } from "@/lib/prisma";
-import { getProjectBySlug } from "@/lib/projects";
-import { Sidebar } from "@/components/Sidebar";
-import { ProjectSwitcher } from "@/components/ProjectSwitcher";
 
-type LayoutSearchParams = {
-  project?: string;
-};
-
-type ProjectWithRelations = Awaited<
-  ReturnType<typeof getProjectBySlug>
->["projects"][number];
-
-type Ga4PropertyOption = {
-  id: string;
-  displayName: string | null;
-  propertyName: string;
-};
-
-type GscSiteOption = {
-  id: string;
-  siteUrl: string;
-};
-
-export default async function HomeLayout({
-  children,
-  searchParams
-}: {
+type Props = {
   children: ReactNode;
-  searchParams?: Promise<LayoutSearchParams>;
-}) {
-  const session = await getServerSession(authOptions);
+};
 
-  if (!session?.user?.email || !session.user.id) {
-    return (
-      <div className="app-shell min-h-screen px-8 py-8 text-white">
-        Authentication state is missing.
-      </div>
-    );
-  }
+const navItems = [
+  { href: "/home", label: "Overview" },
+  { href: "/home/seo", label: "SEO" },
+  { href: "/home/behavior", label: "Behavior" },
+  { href: "/home/settings", label: "Settings" },
+  { href: "/home/intelligence", label: "Intelligence" },
+];
 
-  const workspace = await ensureWorkspaceForUser({
-    userId: session.user.id,
-    email: session.user.email
-  });
-
-  const resolvedSearchParams = searchParams ? await searchParams : {};
-  const currentProjectSlug = resolvedSearchParams?.project ?? null;
-
-  const [{ projects, selectedProject }, ga4Properties, gscSites] = await Promise.all([
-    getProjectBySlug(workspace.id, currentProjectSlug),
-    prisma.ga4Property.findMany({
-      where: { workspaceId: workspace.id },
-      orderBy: { displayName: "asc" }
-    }),
-    prisma.gscSite.findMany({
-      where: { workspaceId: workspace.id },
-      orderBy: { siteUrl: "asc" }
-    })
-  ]);
-
+export default function HomeLayout({ children }: Props) {
   return (
-    <div className="app-shell min-h-screen">
-      <div className="mx-auto flex min-h-screen w-full max-w-[1720px]">
-        <Sidebar />
-
-        <main className="min-w-0 flex-1 px-6 py-6 lg:px-8 lg:py-8">
-          <div className="mb-8">
-            <ProjectSwitcher
-              projects={projects.map((project: ProjectWithRelations) => ({
-                id: project.id,
-                name: project.name,
-                slug: project.slug,
-                ga4Property: project.ga4Property
-                  ? {
-                      id: project.ga4Property.id,
-                      displayName: project.ga4Property.displayName,
-                      propertyName: project.ga4Property.propertyName
-                    }
-                  : null,
-                gscSite: project.gscSite
-                  ? {
-                      id: project.gscSite.id,
-                      siteUrl: project.gscSite.siteUrl
-                    }
-                  : null
-              }))}
-              selectedProjectSlug={selectedProject?.slug ?? null}
-              ga4Properties={ga4Properties.map((property: Ga4PropertyOption) => ({
-                id: property.id,
-                label: property.displayName ?? property.propertyName
-              }))}
-              gscSites={gscSites.map((site: GscSiteOption) => ({
-                id: site.id,
-                label: site.siteUrl
-              }))}
-            />
+    <div className="min-h-screen bg-[#020816] text-white">
+      <div className="mx-auto flex min-h-screen max-w-[1600px]">
+        <aside className="sticky top-0 flex min-h-screen w-[240px] flex-col border-r border-white/8 bg-[linear-gradient(180deg,rgba(8,18,44,0.98),rgba(4,10,24,0.98))] px-7 py-8">
+          <div>
+            <div className="text-[32px] font-semibold tracking-[-0.03em] text-white">
+              Anitrya
+            </div>
+            <div className="mt-2 text-[18px] text-white/60">
+              Analytics Intelligence
+            </div>
           </div>
 
-          <div className="min-w-0">{children}</div>
-        </main>
+          <nav className="mt-20 flex flex-col gap-4">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-[20px] px-5 py-4 text-[20px] font-medium text-white/78 transition hover:bg-white/8 hover:text-white"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="mt-auto flex items-center gap-4 pt-10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/12 bg-white/4 text-[18px] font-semibold text-white/80">
+              N
+            </div>
+          </div>
+        </aside>
+
+        <main className="min-w-0 flex-1 px-8 py-8 lg:px-10">{children}</main>
       </div>
     </div>
   );

@@ -1,58 +1,56 @@
-export type SelectedProjectResolution = {
-  projectId: string;
-  displayName: string;
-  source: "query" | "workspace" | "fallback";
-  hasProject: boolean;
+import { prisma } from "@/lib/prisma";
+
+export type ResolvedSelectedProject = {
+  id: string;
+  workspaceId: string;
+  slug: string;
+  name: string;
+  ga4PropertyId: string | null;
+  gscSiteId: string | null;
 };
 
-type ResolveSelectedProjectInput = {
-  requestedProjectId?: string | null;
-  requestedProjectName?: string | null;
-  sessionWorkspaceId?: string | null;
-  fallbackProjectId?: string | null;
-};
+export async function resolveSelectedProject(input: {
+  workspaceId: string | null;
+  projectSlug: string | null;
+}): Promise<ResolvedSelectedProject | null> {
+  if (!input.workspaceId) return null;
 
-function normalize(value?: string | null) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
+  const projects = await prisma.project.findMany({
+    where: {
+      workspaceId: input.workspaceId,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
 
-function formatDisplayName(projectId: string) {
-  if (projectId.toLowerCase() === "zt") return "ZenTrades";
-  if (projectId.toLowerCase() === "clara-ai") return "Clara AI";
-  return projectId;
-}
+  if (!projects.length) return null;
 
-export function resolveSelectedProject(
-  input: ResolveSelectedProjectInput
-): SelectedProjectResolution {
-  const requestedProjectId = normalize(input.requestedProjectId);
-  const requestedProjectName = normalize(input.requestedProjectName);
-  const sessionWorkspaceId = normalize(input.sessionWorkspaceId);
-  const fallbackProjectId = normalize(input.fallbackProjectId) ?? "default-project";
-
-  if (requestedProjectId) {
-    return {
-      projectId: requestedProjectId,
-      displayName: requestedProjectName ?? formatDisplayName(requestedProjectId),
-      source: "query",
-      hasProject: true,
-    };
-  }
-
-  if (sessionWorkspaceId) {
-    return {
-      projectId: sessionWorkspaceId,
-      displayName: formatDisplayName(sessionWorkspaceId),
-      source: "workspace",
-      hasProject: true,
-    };
-  }
+  const selected =
+    projects.find((project) => project.slug === input.projectSlug) ?? projects[0];
 
   return {
-    projectId: fallbackProjectId,
-    displayName: formatDisplayName(fallbackProjectId),
-    source: "fallback",
-    hasProject: false,
+    id: selected.id,
+    workspaceId: selected.workspaceId,
+    slug: selected.slug,
+    name: selected.name,
+    ga4PropertyId: selected.ga4PropertyId,
+    gscSiteId: selected.gscSiteId,
   };
+}
+
+export async function listWorkspaceProjects(workspaceId: string) {
+  const projects = await prisma.project.findMany({
+    where: { workspaceId },
+    orderBy: { createdAt: "asc" },
+  });
+
+  return projects.map((project) => ({
+    id: project.id,
+    workspaceId: project.workspaceId,
+    slug: project.slug,
+    name: project.name,
+    ga4PropertyId: project.ga4PropertyId,
+    gscSiteId: project.gscSiteId,
+  }));
 }

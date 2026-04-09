@@ -3,29 +3,26 @@ import GoogleProvider from "next-auth/providers/google";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID!;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET!;
 
-export const LOGIN_SCOPES = "openid email profile";
+export const GOOGLE_ANALYTICS_SCOPE =
+  "https://www.googleapis.com/auth/analytics.readonly";
+export const GOOGLE_SEARCH_CONSOLE_SCOPE =
+  "https://www.googleapis.com/auth/webmasters.readonly";
+export const GOOGLE_SHEETS_SCOPE =
+  "https://www.googleapis.com/auth/spreadsheets";
+export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
+export const GOOGLE_BUSINESS_SCOPE =
+  "https://www.googleapis.com/auth/business.manage";
 
-export const GSC_SCOPES = [
+export const GOOGLE_WORKSPACE_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/webmasters.readonly",
+  GOOGLE_ANALYTICS_SCOPE,
+  GOOGLE_SEARCH_CONSOLE_SCOPE,
+  GOOGLE_SHEETS_SCOPE,
+  GOOGLE_ADS_SCOPE,
+  GOOGLE_BUSINESS_SCOPE,
 ].join(" ");
-
-export const GA4_SCOPES = [
-  "openid",
-  "email",
-  "profile",
-  "https://www.googleapis.com/auth/analytics.readonly",
-].join(" ");
-
-const offlineParams = (scope: string) => ({
-  scope,
-  access_type: "offline",
-  prompt: "consent",
-  response_type: "code",
-  include_granted_scopes: "true",
-});
 
 export const authProviders = [
   GoogleProvider({
@@ -35,28 +32,12 @@ export const authProviders = [
     allowDangerousEmailAccountLinking: true,
     authorization: {
       params: {
-        scope: LOGIN_SCOPES,
-        prompt: "select_account",
+        scope: GOOGLE_WORKSPACE_SCOPES,
+        access_type: "offline",
+        prompt: "consent",
         response_type: "code",
+        include_granted_scopes: "true",
       },
-    },
-  }),
-  GoogleProvider({
-    id: "google-gsc",
-    clientId: GOOGLE_CLIENT_ID,
-    clientSecret: GOOGLE_CLIENT_SECRET,
-    allowDangerousEmailAccountLinking: true,
-    authorization: {
-      params: offlineParams(GSC_SCOPES),
-    },
-  }),
-  GoogleProvider({
-    id: "google-ga4",
-    clientId: GOOGLE_CLIENT_ID,
-    clientSecret: GOOGLE_CLIENT_SECRET,
-    allowDangerousEmailAccountLinking: true,
-    authorization: {
-      params: offlineParams(GA4_SCOPES),
     },
   }),
 ];

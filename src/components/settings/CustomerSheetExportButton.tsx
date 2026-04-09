@@ -2,20 +2,20 @@
 
 import { useState } from "react";
 
-type Props = {
-  projectSlug: string;
-  projectLabel: string;
-  from: string;
-  to: string;
-};
-
 type ExportState =
   | { status: "idle"; message: string }
   | { status: "success"; message: string }
   | { status: "error"; message: string };
 
+type Props = {
+  projectId: string;
+  projectLabel: string;
+  from: string;
+  to: string;
+};
+
 export function CustomerSheetExportButton({
-  projectSlug,
+  projectId,
   projectLabel,
   from,
   to,
@@ -29,10 +29,10 @@ export function CustomerSheetExportButton({
   });
 
   async function handleExport() {
-    if (!projectSlug) {
+    if (!projectId || !from || !to) {
       setState({
         status: "error",
-        message: "Project slug is required for export.",
+        message: "project, spreadsheetId, from, and to are required.",
       });
       return;
     }
@@ -40,17 +40,13 @@ export function CustomerSheetExportButton({
     if (!spreadsheetId.trim()) {
       setState({
         status: "error",
-        message: "Spreadsheet URL or ID is required.",
+        message: "project, spreadsheetId, from, and to are required.",
       });
       return;
     }
 
     try {
       setLoading(true);
-      setState({
-        status: "idle",
-        message: "Preparing customer sheet export...",
-      });
 
       const response = await fetch("/api/intelligence/export-customer-sheet", {
         method: "POST",
@@ -58,24 +54,25 @@ export function CustomerSheetExportButton({
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          project: projectSlug,
-          spreadsheetId,
+          project: projectId,
+          spreadsheetId: spreadsheetId.trim(),
           from,
           to,
         }),
       });
 
-      const payload = await response.json().catch(() => ({}));
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        note?: string;
+      };
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? "Customer sheet export failed.");
+        throw new Error(payload.error ?? "Customer sheet export failed.");
       }
 
       setState({
         status: "success",
-        message:
-          payload?.note ??
-          "Customer sheet export completed successfully.",
+        message: payload.note ?? "Customer sheet export completed successfully.",
       });
     } catch (error) {
       setState({
@@ -89,77 +86,73 @@ export function CustomerSheetExportButton({
   }
 
   return (
-    <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,32,75,0.62),rgba(4,10,24,0.88))] p-6">
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_1fr]">
-        <div>
-          <h3 className="text-[34px] font-semibold text-white">Customer sheet export</h3>
-          <p className="mt-2 max-w-[700px] text-[15px] text-white/72">
-            Export customer-facing evidence and structured intelligence outputs for the currently selected project and date range.
-          </p>
+    <section className="grid gap-8 rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,34,79,0.88),rgba(5,15,39,0.94))] px-8 py-8 lg:grid-cols-[1.1fr_1fr]">
+      <div>
+        <h2 className="text-[34px] font-semibold tracking-[-0.03em] text-white">
+          Customer sheet export
+        </h2>
+        <p className="mt-4 max-w-[760px] text-[18px] leading-10 text-white/72">
+          Export customer-facing evidence and structured intelligence outputs for the currently selected project and date range.
+        </p>
 
-          <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-              <div className="text-[12px] uppercase tracking-[0.32em] text-white/46">Project</div>
-              <div className="mt-3 text-[20px] font-semibold text-white">{projectLabel}</div>
-              <div className="mt-2 text-sm text-white/54">{projectSlug}</div>
+        <div className="mt-10 grid gap-5 md:grid-cols-3">
+          <div className="rounded-[24px] border border-white/10 bg-black/10 px-6 py-6">
+            <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Project</div>
+            <div className="mt-5 text-[21px] font-semibold text-white">{projectLabel}</div>
+            <div className="mt-3 text-[16px] text-white/58">{projectId}</div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/10 bg-black/10 px-6 py-6">
+            <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Date range</div>
+            <div className="mt-5 text-[21px] font-semibold leading-10 text-white">
+              {from} → {to}
             </div>
-
-            <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-              <div className="text-[12px] uppercase tracking-[0.32em] text-white/46">Date range</div>
-              <div className="mt-3 text-[20px] font-semibold text-white">
-                {from} → {to}
-              </div>
-              <div className="mt-2 text-sm text-white/54">Export window currently in use.</div>
+            <div className="mt-3 text-[16px] text-white/58">
+              Export window currently in use.
             </div>
+          </div>
 
-            <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-              <div className="text-[12px] uppercase tracking-[0.32em] text-white/46">Export state</div>
-              <div className="mt-3 text-[20px] font-semibold text-white">
-                {state.status === "idle" ? "ready" : state.status}
-              </div>
-              <div className="mt-2 text-sm text-white/54">
-                {state.status === "success"
-                  ? "Evidence export completed."
-                  : "Run export after sync so evidence reflects the latest data."}
-              </div>
+          <div className="rounded-[24px] border border-white/10 bg-black/10 px-6 py-6">
+            <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Export state</div>
+            <div className="mt-5 text-[21px] font-semibold text-white">{state.status}</div>
+            <div className="mt-3 text-[16px] leading-8 text-white/58">
+              Run export after sync so evidence reflects the latest data.
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="rounded-[24px] border border-white/10 bg-black/10 p-5">
-          <label className="flex flex-col gap-3">
-            <span className="text-[12px] uppercase tracking-[0.32em] text-white/46">
-              Spreadsheet URL or ID
-            </span>
-            <input
-              type="text"
-              value={spreadsheetId}
-              onChange={(event) => setSpreadsheetId(event.target.value)}
-              placeholder="Paste Google Sheet URL or spreadsheet ID"
-              className="h-14 rounded-[18px] border border-white/12 bg-white/6 px-5 text-[15px] text-white outline-none"
-            />
-          </label>
+      <div className="rounded-[28px] border border-white/10 px-7 py-7">
+        <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">
+          Spreadsheet URL or ID
+        </div>
 
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={loading}
-            className="mt-4 h-14 w-full rounded-[18px] border border-white/12 bg-white/6 text-[16px] font-semibold text-white disabled:opacity-60"
-          >
-            {loading ? "Exporting..." : "Export customer sheet"}
-          </button>
+        <input
+          value={spreadsheetId}
+          onChange={(event) => setSpreadsheetId(event.target.value)}
+          placeholder="Paste Google Sheets URL or spreadsheet ID"
+          className="mt-7 h-16 w-full rounded-[18px] border border-white/12 bg-white/4 px-5 text-[18px] text-white outline-none placeholder:text-white/28"
+        />
 
-          <div
-            className={`mt-4 rounded-[18px] border px-5 py-4 text-[15px] ${
-              state.status === "error"
-                ? "border-rose-400/30 bg-rose-400/10 text-rose-100"
-                : state.status === "success"
-                  ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100"
-                  : "border-white/10 bg-black/10 text-white/72"
-            }`}
-          >
-            {state.message}
-          </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={loading}
+          className="mt-7 h-16 w-full rounded-[18px] border border-white/12 bg-white/3 text-[18px] font-semibold text-white disabled:opacity-60"
+        >
+          {loading ? "Exporting..." : "Export customer sheet"}
+        </button>
+
+        <div
+          className={`mt-8 rounded-[22px] border px-5 py-5 text-[16px] leading-8 ${
+            state.status === "error"
+              ? "border-rose-400/25 bg-rose-400/10 text-rose-100"
+              : state.status === "success"
+                ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100"
+                : "border-white/10 bg-white/4 text-white/72"
+          }`}
+        >
+          {state.message}
         </div>
       </div>
     </section>

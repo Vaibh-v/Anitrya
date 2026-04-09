@@ -7,61 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  ADMIN
-  EDITOR
-  ANALYST
-  VIEWER
-}
-
-enum IntegrationProvider {
-  GOOGLE_GSC
-  GOOGLE_GA4
-  GOOGLE_ADS
-  GOOGLE_GBP
-  GOOGLE_TRENDS
-  META_AD_LIBRARY
-  SEMRUSH
-  AHREFS
-  BIRDEYE
-}
-
-enum SyncSource {
-  GOOGLE_GSC
-  GOOGLE_GA4
-  GOOGLE_ADS
-  GOOGLE_GBP
-  GOOGLE_TRENDS
-  META_AD_LIBRARY
-  SEMRUSH
-  AHREFS
-  BIRDEYE
-}
-
-enum SyncStatus {
-  RUNNING
-  SUCCESS
-  ERROR
-}
-
-enum InsightSeverity {
-  LOW
-  MEDIUM
-  HIGH
-}
-
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  image     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id          String             @id @default(cuid())
+  email       String             @unique
+  name        String?
+  image       String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
   accounts    Account[]
-  sessions    Session[]
-  memberships Membership[]
   tokens      IntegrationToken[]
+  memberships Membership[]
+  sessions    Session[]
 }
 
 model Account {
@@ -77,8 +33,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -88,8 +43,7 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
@@ -101,37 +55,35 @@ model VerificationToken {
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  memberships       Membership[]
-  tokens            IntegrationToken[]
-  syncRuns          SyncRun[]
-  insights          Insight[]
-  gscSites          GscSite[]
-  ga4Props          Ga4Property[]
-  gscMetrics        GscDailyMetric[]
-  gscQueryMetrics   GscQueryMetric[]
-  gscPageMetrics    GscPageMetric[]
+  id                String                  @id @default(cuid())
+  name              String
+  slug              String                  @unique
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
   ga4Metrics        Ga4DailyMetric[]
   ga4LandingMetrics Ga4LandingPageMetric[]
+  ga4Props          Ga4Property[]
   ga4SourceMetrics  Ga4SourceMediumMetric[]
+  gscMetrics        GscDailyMetric[]
+  gscPageMetrics    GscPageMetric[]
+  gscQueryMetrics   GscQueryMetric[]
+  gscSites          GscSite[]
+  insights          Insight[]
+  tokens            IntegrationToken[]
+  memberships       Membership[]
   projects          Project[]
+  syncRuns          SyncRun[]
 }
 
 model Membership {
-  id          String   @id @default(cuid())
-  role        Role     @default(ADMIN)
+  id          String    @id @default(cuid())
+  role        Role      @default(ADMIN)
   userId      String
   workspaceId String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
   @@index([workspaceId])
@@ -149,9 +101,8 @@ model IntegrationToken {
   userId       String
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace    Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, provider])
   @@index([userId])
@@ -167,8 +118,7 @@ model SyncRun {
   metadata    Json?
   startedAt   DateTime   @default(now())
   endedAt     DateTime?
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, source])
 }
@@ -183,31 +133,29 @@ model Insight {
   severity    InsightSeverity
   nextSteps   String
   createdAt   DateTime        @default(now())
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt])
 }
 
 model GscSite {
-  id          String   @id @default(cuid())
-  workspaceId String
-  siteUrl     String
-  permission  String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id           String           @id @default(cuid())
+  workspaceId  String
+  siteUrl      String
+  permission   String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
   metrics      GscDailyMetric[]
-  queryMetrics GscQueryMetric[]
   pageMetrics  GscPageMetric[]
+  queryMetrics GscQueryMetric[]
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   projects     Project[]
 
   @@unique([workspaceId, siteUrl])
 }
 
 model GscDailyMetric {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   siteId      String
   date        DateTime
@@ -215,18 +163,17 @@ model GscDailyMetric {
   impressions Float
   ctr         Float
   position    Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  site      GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  site        GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, date])
   @@index([workspaceId, date])
 }
 
 model GscQueryMetric {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   siteId      String
   date        DateTime
@@ -236,11 +183,10 @@ model GscQueryMetric {
   impressions Float
   ctr         Float
   position    Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  site      GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  site        GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, date, query, page])
   @@index([workspaceId, date])
@@ -250,7 +196,7 @@ model GscQueryMetric {
 }
 
 model GscPageMetric {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   siteId      String
   date        DateTime
@@ -259,11 +205,10 @@ model GscPageMetric {
   impressions Float
   ctr         Float
   position    Float
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  site      GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  site        GscSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([siteId, date, page])
   @@index([workspaceId, date])
@@ -272,17 +217,16 @@ model GscPageMetric {
 }
 
 model Ga4Property {
-  id           String   @id @default(cuid())
-  workspaceId  String
-  propertyName String
-  displayName  String?
-  accountName  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  workspace      Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id             String                  @id @default(cuid())
+  workspaceId    String
+  propertyName   String
+  displayName    String?
+  accountName    String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
   metrics        Ga4DailyMetric[]
   landingMetrics Ga4LandingPageMetric[]
+  workspace      Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   sourceMetrics  Ga4SourceMediumMetric[]
   projects       Project[]
 
@@ -290,7 +234,7 @@ model Ga4Property {
 }
 
 model Ga4DailyMetric {
-  id              String   @id @default(cuid())
+  id              String      @id @default(cuid())
   workspaceId     String
   propertyId      String
   date            DateTime
@@ -298,18 +242,17 @@ model Ga4DailyMetric {
   sessions        Float
   engagedSessions Float
   engagementRate  Float
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  property  Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  property        Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([propertyId, date])
   @@index([workspaceId, date])
 }
 
 model Ga4LandingPageMetric {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   workspaceId    String
   propertyId     String
   date           DateTime
@@ -318,11 +261,10 @@ model Ga4LandingPageMetric {
   users          Float
   conversions    Float
   engagementRate Float?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  property  Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  property       Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([propertyId, date, page])
   @@index([workspaceId, date])
@@ -331,7 +273,7 @@ model Ga4LandingPageMetric {
 }
 
 model Ga4SourceMediumMetric {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   workspaceId    String
   propertyId     String
   date           DateTime
@@ -340,11 +282,10 @@ model Ga4SourceMediumMetric {
   users          Float
   conversions    Float
   engagementRate Float?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  property  Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  property       Ga4Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  workspace      Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([propertyId, date, sourceMedium])
   @@index([workspaceId, date])
@@ -353,20 +294,156 @@ model Ga4SourceMediumMetric {
 }
 
 model Project {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String
-  workspaceId String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id            String       @id @default(cuid())
+  name          String
+  workspaceId   String
+  createdAt     DateTime     @default(now())
   ga4PropertyId String?
   gscSiteId     String?
-
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  ga4Property Ga4Property? @relation(fields: [ga4PropertyId], references: [id], onDelete: SetNull)
-  gscSite     GscSite?     @relation(fields: [gscSiteId], references: [id], onDelete: SetNull)
+  slug          String
+  updatedAt     DateTime     @updatedAt
+  ga4Property   Ga4Property? @relation(fields: [ga4PropertyId], references: [id])
+  gscSite       GscSite?     @relation(fields: [gscSiteId], references: [id])
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, slug])
   @@index([workspaceId])
+}
+
+model ga4_landing_page_daily {
+  id               String    @id @default(dbgenerated("gen_random_uuid()"))
+  workspace_id     String
+  project_slug     String
+  date             DateTime  @db.Date
+  landing_page     String?
+  page_path        String?
+  sessions         Int?
+  users            Int?
+  engaged_sessions Int?
+  conversions      Int?
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([workspace_id, project_slug, date], map: "idx_ga4_landing_page_daily_workspace_project_date")
+}
+
+model ga4_source_daily {
+  id               String    @id @default(dbgenerated("gen_random_uuid()"))
+  workspace_id     String
+  project_slug     String
+  date             DateTime  @db.Date
+  source           String?
+  medium           String?
+  sessions         Int?
+  users            Int?
+  engaged_sessions Int?
+  conversions      Int?
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([workspace_id, project_slug, date], map: "idx_ga4_source_daily_workspace_project_date")
+}
+
+model gsc_page_daily {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  workspace_id String
+  project_slug String
+  date         DateTime  @db.Date
+  page         String?
+  clicks       Int?
+  impressions  Int?
+  ctr          Float?
+  position     Float?
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([workspace_id, project_slug, date], map: "idx_gsc_page_daily_workspace_project_date")
+}
+
+model gsc_query_daily {
+  id           String    @id @default(dbgenerated("gen_random_uuid()"))
+  workspace_id String
+  project_slug String
+  date         DateTime  @db.Date
+  query        String?
+  clicks       Int?
+  impressions  Int?
+  ctr          Float?
+  position     Float?
+  created_at   DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([workspace_id, project_slug, date], map: "idx_gsc_query_daily_workspace_project_date")
+}
+
+model intelligence_history {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id       String
+  project_slug       String
+  category           String
+  title              String
+  summary            String
+  confidence         String
+  score              Int       @default(0)
+  evidence_json      Json      @default("[]")
+  actions_json       Json      @default("[]")
+  source_window_from DateTime? @db.Date
+  source_window_to   DateTime? @db.Date
+  fingerprint        String    @unique(map: "idx_intelligence_history_fingerprint")
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([workspace_id, project_slug, created_at(sort: Desc)], map: "idx_intelligence_history_workspace_slug_created")
+}
+
+model recommendation_outcomes {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id         String
+  project_slug         String
+  hypothesis_title     String
+  recommendation_title String
+  outcome_status       String
+  outcome_note         String   @default("")
+  impact_delta         Int      @default(0)
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([workspace_id, project_slug, created_at(sort: Desc)], map: "idx_recommendation_outcomes_workspace_slug_created")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  ANALYST
+  VIEWER
+}
+
+enum IntegrationProvider {
+  GOOGLE_GSC
+  GOOGLE_GA4
+  SEMRUSH
+  AHREFS
+  BIRDEYE
+  GOOGLE_ADS
+  GOOGLE_GBP
+  GOOGLE_TRENDS
+  META_AD_LIBRARY
+}
+
+enum SyncSource {
+  GOOGLE_GSC
+  GOOGLE_GA4
+  SEMRUSH
+  AHREFS
+  BIRDEYE
+  GOOGLE_ADS
+  GOOGLE_GBP
+  GOOGLE_TRENDS
+  META_AD_LIBRARY
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  ERROR
+}
+
+enum InsightSeverity {
+  LOW
+  MEDIUM
+  HIGH
 }

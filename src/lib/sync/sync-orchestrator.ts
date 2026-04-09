@@ -1,25 +1,48 @@
-import { getProjectMapping } from "@/lib/project/project-mapper";
-import { resolveWorkspaceToken } from "@/lib/integrations/workspace-token-resolver";
-import { runGA4Sync } from "@/lib/sync/providers/ga4-runner";
-import { runGSCSync } from "@/lib/sync/providers/gsc-runner";
+import { prisma } from "@/lib/prisma";
+import { getGoogleAccessTokenForWorkspace } from "@/lib/integrations/google/get-google-access-token";
+import { fetchGA4SourceDaily } from "@/lib/integrations/google/ga4/fetch-ga4-source-daily";
+import { fetchGA4LandingPageDaily } from "@/lib/integrations/google/ga4/fetch-ga4-landing";
+import { fetchGSCQueryDaily } from "@/lib/integrations/google/gsc/fetch-gsc-query";
+import { fetchGSCPageDaily } from "@/lib/integrations/google/gsc/fetch-gsc-page";
+
+export type SyncProviderStatus = "success" | "error" | "skipped";
 
 export type SyncProviderResult = {
   provider: "GOOGLE_GA4" | "GOOGLE_GSC";
-  status: "success" | "error" | "skipped";
+  status: SyncProviderStatus;
   rowsSynced?: number;
-  details?: Record<string, unknown>;
   reason?: string;
+  details?: Record<string, unknown>;
 };
 
 export type FullSyncResult = {
+  workspaceId: string;
   projectId: string;
   projectSlug: string;
   projectLabel: string;
-  workspaceId: string;
   from: string;
   to: string;
   results: SyncProviderResult[];
 };
+
+function normalizePropertyId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = value.replace(/^properties\//, "").trim();
+  return /^\d+$/.test(cleaned) ? cleaned : null;
+}
+
+function normalizeSiteUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = value.trim();
+  if (
+    cleaned.startsWith("sc-domain:") ||
+    cleaned.startsWith("http://") ||
+    cleaned.startsWith("https://")
+  ) {
+    return cleaned;
+  }
+  return null;
+}
 
 export async function runFullSync(params: {
   workspaceId: string;
@@ -27,25 +50,50 @@ export async function runFullSync(params: {
   from: string;
   to: string;
 }): Promise<FullSyncResult> {
-  const mapping = await getProjectMapping({
-    projectRef: params.projectRef,
-    workspaceId: params.workspaceId,
+  const project = await prisma.project.findFirst({
+    where: {
+      workspaceId: params.workspaceId,
+      OR: [{ id: params.projectRef }, { slug: params.projectRef }],
+    },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      ga4PropertyId: true,
+      gscSiteId: true,
+    },
   });
 
+  if (!project) {
+    throw new Error("Project not found for the current workspace.");
+  }
+
+  const accessToken = await getGoogleAccessTokenForWorkspace(params.workspaceId);
   const results: SyncProviderResult[] = [];
 
-  if (mapping.ga4PropertyId) {
+  const ga4PropertyId = normalizePropertyId(project.ga4PropertyId);
+  if (!ga4PropertyId) {
+    results.push({
+      provider: "GOOGLE_GA4",
+      status: "skipped",
+      reason: "The active project does not have a valid numeric GA4 property mapping.",
+    });
+  } else {
     try {
-      const ga4Token = await resolveWorkspaceToken({
-        workspaceId: mapping.workspaceId,
-        acceptedProviders: ["GOOGLE_GA4"],
+      const sourceRows = await fetchGA4SourceDaily({
+        workspaceId: params.workspaceId,
+        projectSlug: project.slug,
+        propertyId: ga4PropertyId,
+        accessToken,
+        from: params.from,
+        to: params.to,
       });
 
-      const output = await runGA4Sync({
-        accessToken: ga4Token,
-        propertyId: mapping.ga4PropertyId,
-        workspaceId: mapping.workspaceId,
-        projectId: mapping.projectSlug,
+      const landingRows = await fetchGA4LandingPageDaily({
+        workspaceId: params.workspaceId,
+        projectSlug: project.slug,
+        propertyId: ga4PropertyId,
+        accessToken,
         from: params.from,
         to: params.to,
       });
@@ -53,8 +101,12 @@ export async function runFullSync(params: {
       results.push({
         provider: "GOOGLE_GA4",
         status: "success",
-        rowsSynced: output.rowsSynced,
-        details: output as Record<string, unknown>,
+        rowsSynced: sourceRows + landingRows,
+        details: {
+          sourceRows,
+          landingRows,
+          propertyId: ga4PropertyId,
+        },
       });
     } catch (error) {
       results.push({
@@ -63,26 +115,31 @@ export async function runFullSync(params: {
         reason: error instanceof Error ? error.message : "GA4 sync failed.",
       });
     }
-  } else {
-    results.push({
-      provider: "GOOGLE_GA4",
-      status: "skipped",
-      reason: "The active project is not mapped to a GA4 property.",
-    });
   }
 
-  if (mapping.gscSiteUrl) {
+  const gscSiteUrl = normalizeSiteUrl(project.gscSiteId);
+  if (!gscSiteUrl) {
+    results.push({
+      provider: "GOOGLE_GSC",
+      status: "skipped",
+      reason: "The active project does not have a valid Search Console site mapping.",
+    });
+  } else {
     try {
-      const gscToken = await resolveWorkspaceToken({
-        workspaceId: mapping.workspaceId,
-        acceptedProviders: ["GOOGLE_GSC"],
+      const queryRows = await fetchGSCQueryDaily({
+        workspaceId: params.workspaceId,
+        projectSlug: project.slug,
+        siteUrl: gscSiteUrl,
+        accessToken,
+        from: params.from,
+        to: params.to,
       });
 
-      const output = await runGSCSync({
-        accessToken: gscToken,
-        siteUrl: mapping.gscSiteUrl,
-        workspaceId: mapping.workspaceId,
-        projectId: mapping.projectSlug,
+      const pageRows = await fetchGSCPageDaily({
+        workspaceId: params.workspaceId,
+        projectSlug: project.slug,
+        siteUrl: gscSiteUrl,
+        accessToken,
         from: params.from,
         to: params.to,
       });
@@ -90,8 +147,12 @@ export async function runFullSync(params: {
       results.push({
         provider: "GOOGLE_GSC",
         status: "success",
-        rowsSynced: output.rowsSynced,
-        details: output as Record<string, unknown>,
+        rowsSynced: queryRows + pageRows,
+        details: {
+          queryRows,
+          pageRows,
+          siteUrl: gscSiteUrl,
+        },
       });
     } catch (error) {
       results.push({
@@ -100,19 +161,13 @@ export async function runFullSync(params: {
         reason: error instanceof Error ? error.message : "GSC sync failed.",
       });
     }
-  } else {
-    results.push({
-      provider: "GOOGLE_GSC",
-      status: "skipped",
-      reason: "The active project is not mapped to a GSC site.",
-    });
   }
 
   return {
-    projectId: mapping.projectId,
-    projectSlug: mapping.projectSlug,
-    projectLabel: mapping.projectLabel,
-    workspaceId: mapping.workspaceId,
+    workspaceId: params.workspaceId,
+    projectId: project.id,
+    projectSlug: project.slug,
+    projectLabel: project.name,
     from: params.from,
     to: params.to,
     results,
