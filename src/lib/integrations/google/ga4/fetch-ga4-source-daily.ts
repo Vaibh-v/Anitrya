@@ -19,7 +19,13 @@ function escapeSql(value: string): string {
 }
 
 function normalizePropertyId(propertyId: string): string {
-  return propertyId.replace(/^properties\//, "").trim();
+  const cleaned = propertyId.trim();
+
+  if (cleaned.startsWith("properties/")) {
+    return cleaned.replace(/^properties\//, "");
+  }
+
+  return cleaned;
 }
 
 function normalizeGaDate(value: string): string {
@@ -31,6 +37,9 @@ function normalizeGaDate(value: string): string {
 
 export async function fetchGA4SourceDaily(input: Input): Promise<number> {
   const propertyId = normalizePropertyId(input.propertyId);
+
+  console.log("GA4 source sync propertyId input:", input.propertyId);
+  console.log("GA4 source sync propertyId normalized:", propertyId);
 
   const response = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
@@ -55,7 +64,10 @@ export async function fetchGA4SourceDaily(input: Input): Promise<number> {
   };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? "GA4 source sync failed.");
+    throw new Error(
+      payload.error?.message ??
+        `GA4 source sync failed for property ${propertyId}.`,
+    );
   }
 
   const rows = payload.rows ?? [];

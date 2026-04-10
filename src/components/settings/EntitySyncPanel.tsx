@@ -14,6 +14,18 @@ type SyncResult = {
   reason?: string;
 };
 
+type SyncResponse = {
+  ok?: boolean;
+  error?: string;
+  summary?: string;
+  results?: SyncResult[];
+  project?: {
+    id?: string;
+    slug?: string;
+    label?: string;
+  };
+};
+
 export type EntitySyncPanelProps = {
   projectSlug: string;
   projectLabel: string;
@@ -25,6 +37,46 @@ function normalizeDateInput(value: string) {
   if (!value) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   return "";
+}
+
+function buildResultsSummary(results: SyncResult[]) {
+  if (!results.length) {
+    return "Sync completed.";
+  }
+
+  return results
+    .map((item) => {
+      if (item.status === "success") {
+        return `${item.provider}: success (${item.rowsSynced ?? 0})${
+          item.reason ? ` - ${item.reason}` : ""
+        }`;
+      }
+
+      if (item.status === "skipped") {
+        return `${item.provider}: skipped${
+          item.reason ? ` - ${item.reason}` : ""
+        }`;
+      }
+
+      return `${item.provider}: ${item.reason ?? "error"}`;
+    })
+    .join(" · ");
+}
+
+function buildFallbackError(payload: SyncResponse) {
+  if (payload.error && payload.error.trim().length > 0) {
+    return payload.error;
+  }
+
+  if (payload.summary && payload.summary.trim().length > 0) {
+    return payload.summary;
+  }
+
+  if (payload.results?.length) {
+    return buildResultsSummary(payload.results);
+  }
+
+  return "Sync failed.";
 }
 
 export function EntitySyncPanel({
@@ -79,40 +131,27 @@ export function EntitySyncPanel({
         }),
       });
 
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        results?: SyncResult[];
-      };
+      const payload = (await response.json().catch(() => ({}))) as SyncResponse;
 
       if (!response.ok && response.status !== 207) {
-        throw new Error(payload.error ?? "Sync failed.");
-      }
-
-      const results = payload.results ?? [];
-      if (!results.length) {
         setState({
-          status: "success",
-          message: "Sync completed.",
+          status: "error",
+          message: buildFallbackError(payload),
         });
         return;
       }
 
+      const results = payload.results ?? [];
       const failures = results.filter((item) => item.status === "error");
-      const summary = results
-        .map((item) => {
-          if (item.status === "success") {
-            return `${item.provider}: success (${item.rowsSynced ?? 0})`;
-          }
-          if (item.status === "skipped") {
-            return `${item.provider}: skipped${item.reason ? ` (${item.reason})` : ""}`;
-          }
-          return `${item.provider}: ${item.reason ?? "error"}`;
-        })
-        .join(" · ");
+
+      const message =
+        payload.summary && payload.summary.trim().length > 0
+          ? payload.summary
+          : buildResultsSummary(results);
 
       setState({
-        status: failures.length > 0 ? "error" : "success",
-        message: summary,
+        status: failures.length > 0 || payload.ok === false ? "error" : "success",
+        message,
       });
     } catch (error) {
       setState({

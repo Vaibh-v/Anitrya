@@ -5,14 +5,13 @@ import { useEffect, useState } from "react";
 type MappingOptionsResponse = {
   ga4Properties: Array<{
     id: string;
-    externalId: string;
-    name: string;
+    label: string;
   }>;
   gscSites: Array<{
     id: string;
-    siteUrl: string;
-    permissionLevel: string;
+    label: string;
   }>;
+  error?: string | null;
 };
 
 type Props = {
@@ -31,6 +30,7 @@ export function ProjectMappingPanel({
   const [options, setOptions] = useState<MappingOptionsResponse>({
     ga4Properties: [],
     gscSites: [],
+    error: null,
   });
   const [ga4PropertyId, setGa4PropertyId] = useState(currentGa4PropertyId ?? "");
   const [gscSiteId, setGscSiteId] = useState(currentGscSiteId ?? "");
@@ -51,13 +51,14 @@ export function ProjectMappingPanel({
       try {
         setLoading(true);
 
-        const response = await fetch("/api/projects/mapping-options", {
-          cache: "no-store",
-        });
+        const response = await fetch(
+          `/api/projects/mapping-options?project=${encodeURIComponent(projectSlug)}`,
+          {
+            cache: "no-store",
+          },
+        );
 
-        const payload = (await response.json().catch(() => ({}))) as Partial<MappingOptionsResponse> & {
-          error?: string;
-        };
+        const payload = (await response.json().catch(() => ({}))) as MappingOptionsResponse;
 
         if (!response.ok) {
           throw new Error(payload.error ?? "Failed to load mapping options.");
@@ -68,6 +69,7 @@ export function ProjectMappingPanel({
         const nextOptions: MappingOptionsResponse = {
           ga4Properties: payload.ga4Properties ?? [],
           gscSites: payload.gscSites ?? [],
+          error: payload.error ?? null,
         };
 
         setOptions(nextOptions);
@@ -79,6 +81,13 @@ export function ProjectMappingPanel({
           setGa4PropertyId(currentGa4PropertyId);
         } else if (!currentGa4PropertyId && nextOptions.ga4Properties.length === 1) {
           setGa4PropertyId(nextOptions.ga4Properties[0].id);
+        } else if (
+          ga4PropertyId &&
+          nextOptions.ga4Properties.some((item) => item.id === ga4PropertyId)
+        ) {
+          setGa4PropertyId(ga4PropertyId);
+        } else {
+          setGa4PropertyId("");
         }
 
         if (
@@ -88,9 +97,29 @@ export function ProjectMappingPanel({
           setGscSiteId(currentGscSiteId);
         } else if (!currentGscSiteId && nextOptions.gscSites.length === 1) {
           setGscSiteId(nextOptions.gscSites[0].id);
+        } else if (
+          gscSiteId &&
+          nextOptions.gscSites.some((item) => item.id === gscSiteId)
+        ) {
+          setGscSiteId(gscSiteId);
+        } else {
+          setGscSiteId("");
+        }
+
+        if (nextOptions.error) {
+          setMessage({
+            type: "error",
+            text: nextOptions.error,
+          });
+        } else {
+          setMessage({
+            type: "idle",
+            text: `Map ${projectLabel} to one owned GA4 property and one owned Search Console site.`,
+          });
         }
       } catch (error) {
         if (!active) return;
+
         setMessage({
           type: "error",
           text:
@@ -108,7 +137,7 @@ export function ProjectMappingPanel({
     return () => {
       active = false;
     };
-  }, [currentGa4PropertyId, currentGscSiteId]);
+  }, [projectSlug, projectLabel, currentGa4PropertyId, currentGscSiteId]);
 
   async function handleSave() {
     try {
@@ -120,7 +149,7 @@ export function ProjectMappingPanel({
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          projectSlug,
+          project: projectSlug,
           ga4PropertyId,
           gscSiteId,
         }),
@@ -148,6 +177,9 @@ export function ProjectMappingPanel({
       setSaving(false);
     }
   }
+
+  const noGa4Options = !loading && options.ga4Properties.length === 0;
+  const noGscOptions = !loading && options.gscSites.length === 0;
 
   return (
     <section className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,34,79,0.88),rgba(5,15,39,0.94))] px-8 py-8">
@@ -182,7 +214,7 @@ export function ProjectMappingPanel({
             <option value="">Select owned GA4 property</option>
             {options.ga4Properties.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name} ({item.externalId})
+                {item.label}
               </option>
             ))}
           </select>
@@ -190,6 +222,12 @@ export function ProjectMappingPanel({
           <div className="mt-4 text-[15px] leading-7 text-white/56">
             Saved value: {currentGa4PropertyId ?? "Not mapped"}
           </div>
+
+          {noGa4Options ? (
+            <div className="mt-3 text-[14px] leading-6 text-white/58">
+              No owned GA4 properties were discovered for the connected Google account yet.
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-[24px] border border-white/10 bg-black/10 p-6">
@@ -206,7 +244,7 @@ export function ProjectMappingPanel({
             <option value="">Select owned Search Console site</option>
             {options.gscSites.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.siteUrl}
+                {item.label}
               </option>
             ))}
           </select>
@@ -214,6 +252,12 @@ export function ProjectMappingPanel({
           <div className="mt-4 text-[15px] leading-7 text-white/56">
             Saved value: {currentGscSiteId ?? "Not mapped"}
           </div>
+
+          {noGscOptions ? (
+            <div className="mt-3 text-[14px] leading-6 text-white/58">
+              No owned Search Console sites were discovered for the connected Google account yet.
+            </div>
+          ) : null}
         </div>
       </div>
 

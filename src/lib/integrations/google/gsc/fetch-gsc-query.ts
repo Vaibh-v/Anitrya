@@ -22,6 +22,8 @@ function escapeSql(value: string): string {
 }
 
 export async function fetchGSCQueryDaily(input: Input): Promise<number> {
+  console.log("GSC query sync siteUrl:", input.siteUrl);
+
   const response = await fetch(
     `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(
       input.siteUrl,
@@ -47,7 +49,10 @@ export async function fetchGSCQueryDaily(input: Input): Promise<number> {
   };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? "GSC query sync failed.");
+    throw new Error(
+      payload.error?.message ??
+        `GSC query sync failed for site ${input.siteUrl}.`,
+    );
   }
 
   const rows = payload.rows ?? [];

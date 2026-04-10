@@ -34,8 +34,27 @@ function normalizeGa4PropertyId(value: string | null | undefined): string | null
     return null;
   }
 
-  const match = cleaned.match(/\d+/);
-  return match?.[0] ?? cleaned;
+  return cleaned.replace(/^properties\//, "").trim();
+}
+
+function buildGa4PropertyLabel(input: {
+  displayName: string | null;
+  propertyName: string;
+  accountName: string | null;
+}) {
+  const propertyId = normalizeGa4PropertyId(input.propertyName);
+  const name = asCleanString(input.displayName) ?? input.propertyName;
+  const accountName = asCleanString(input.accountName);
+
+  if (propertyId && accountName) {
+    return `${name} (${propertyId}) · ${accountName}`;
+  }
+
+  if (propertyId) {
+    return `${name} (${propertyId})`;
+  }
+
+  return name;
 }
 
 export async function getProjectMapping(
@@ -73,42 +92,35 @@ export async function getProjectMapping(
     throw new Error("Project not found.");
   }
 
-  const ga4Record = project.ga4PropertyId
-    ? await prisma.ga4Property.findUnique({
-        where: {
-          id: project.ga4PropertyId,
-        },
-        select: {
-          id: true,
-          propertyName: true,
-          accountName: true,
-        },
-      })
-    : null;
-
-  const gscRecord = project.gscSiteId
-    ? await prisma.gscSite.findUnique({
-        where: {
-          id: project.gscSiteId,
-        },
-        select: {
-          id: true,
-          siteUrl: true,
-          label: true,
-        },
-      })
-    : null;
-
-  const ga4PropertyId = normalizeGa4PropertyId(ga4Record?.propertyName);
-  const ga4PropertyLabel =
-    asCleanString(ga4Record?.accountName) ??
-    asCleanString(ga4Record?.propertyName) ??
-    ga4PropertyId;
-
-  const gscSiteUrl = asCleanString(gscRecord?.siteUrl);
-  const gscSiteLabel =
-    asCleanString(gscRecord?.label) ??
-    asCleanString(gscRecord?.siteUrl);
+  const [ga4Record, gscRecord] = await Promise.all([
+    project.ga4PropertyId
+      ? prisma.ga4Property.findFirst({
+          where: {
+            id: project.ga4PropertyId,
+            workspaceId: project.workspaceId,
+          },
+          select: {
+            id: true,
+            propertyName: true,
+            displayName: true,
+            accountName: true,
+          },
+        })
+      : Promise.resolve(null),
+    project.gscSiteId
+      ? prisma.gscSite.findFirst({
+          where: {
+            id: project.gscSiteId,
+            workspaceId: project.workspaceId,
+          },
+          select: {
+            id: true,
+            siteUrl: true,
+            permission: true,
+          },
+        })
+      : Promise.resolve(null),
+  ]);
 
   return {
     workspaceId: project.workspaceId,
@@ -116,10 +128,10 @@ export async function getProjectMapping(
     projectSlug: project.slug,
     projectLabel: project.name,
     ga4PropertyRecordId: ga4Record?.id ?? null,
-    ga4PropertyId,
-    ga4PropertyLabel,
+    ga4PropertyId: normalizeGa4PropertyId(ga4Record?.propertyName),
+    ga4PropertyLabel: ga4Record ? buildGa4PropertyLabel(ga4Record) : null,
     gscSiteRecordId: gscRecord?.id ?? null,
-    gscSiteUrl,
-    gscSiteLabel,
+    gscSiteUrl: asCleanString(gscRecord?.siteUrl),
+    gscSiteLabel: asCleanString(gscRecord?.siteUrl),
   };
 }

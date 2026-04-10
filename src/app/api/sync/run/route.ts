@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import { getGoogleAccessTokenForWorkspace } from "@/lib/google/tokens";
+import {
+  getGoogleAnalyticsAccessTokenForWorkspace,
+  getGoogleSearchConsoleAccessTokenForWorkspace,
+} from "@/lib/google/tokens";
 import { getProjectMapping } from "@/lib/project/project-mapper";
 import { fetchGA4SourceDaily } from "@/lib/integrations/google/ga4/fetch-ga4-source-daily";
 import { fetchGA4LandingPageDaily } from "@/lib/integrations/google/ga4/fetch-ga4-landing";
@@ -13,157 +16,210 @@ function asString(value: unknown): string | null {
     : null;
 }
 
-type SyncItem = {
-  source: "GOOGLE_GA4" | "GOOGLE_GSC";
+type SyncResult = {
+  provider: "GOOGLE_GA4" | "GOOGLE_GSC";
   status: "success" | "error" | "skipped";
-  detail: string;
+  reason: string;
   rowsSynced: number;
 };
 
 export async function POST(req: NextRequest) {
+  const results: SyncResult[] = [];
+
   try {
-    await requireSession();
+    const session = await requireSession();
+    const workspaceId = asString(session.user?.workspaceId);
 
-    const body = await req.json().catch(() => null);
-
-    const ref = asString(body?.project);
-    const from = asString(body?.from);
-    const to = asString(body?.to);
-    const workspaceId = asString(body?.workspaceId);
-
-    if (!ref || !from || !to || !workspaceId) {
+    if (!workspaceId) {
       return NextResponse.json(
-        { error: "workspaceId, project, from, and to are required." },
+        {
+          ok: false,
+          error: "No active workspace found for this session.",
+          results,
+        },
         { status: 400 },
       );
     }
 
-    const mapping = await getProjectMapping({
-      workspaceId,
-      ref,
-    });
+    const body = await req.json().catch(() => null);
 
-    const accessToken = await getGoogleAccessTokenForWorkspace(
-      mapping.workspaceId,
-    );
+    const projectRef =
+      asString(body?.project) ??
+      asString(body?.projectSlug) ??
+      asString(body?.projectId);
+    const from = asString(body?.from);
+    const to = asString(body?.to);
 
-    const results: SyncItem[] = [];
+    if (!projectRef || !from || !to) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "project, from, and to are required.",
+          results,
+        },
+        { status: 400 },
+      );
+    }
 
-    if (mapping.ga4PropertyId && /^\d+$/.test(mapping.ga4PropertyId)) {
+    let mapping;
+    try {
+      mapping = await getProjectMapping({
+        workspaceId,
+        ref: projectRef,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to resolve project mapping.";
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: message,
+          results,
+        },
+        { status: 500 },
+      );
+    }
+
+    if (mapping.ga4PropertyId) {
       try {
+        const accessToken =
+          await getGoogleAnalyticsAccessTokenForWorkspace(workspaceId);
+
         const [sourceRows, landingRows] = await Promise.all([
           fetchGA4SourceDaily({
-            accessToken,
-            workspaceId: mapping.workspaceId,
+            workspaceId,
             projectSlug: mapping.projectSlug,
             propertyId: mapping.ga4PropertyId,
+            accessToken,
             from,
             to,
           }),
           fetchGA4LandingPageDaily({
-            accessToken,
-            workspaceId: mapping.workspaceId,
+            workspaceId,
             projectSlug: mapping.projectSlug,
             propertyId: mapping.ga4PropertyId,
+            accessToken,
             from,
             to,
           }),
         ]);
 
-        const total = Number(sourceRows) + Number(landingRows);
+        const total = sourceRows + landingRows;
 
         results.push({
-          source: "GOOGLE_GA4",
+          provider: "GOOGLE_GA4",
           status: "success",
-          detail: `${total} rows synced`,
+          reason: `${total} rows synced`,
           rowsSynced: total,
         });
       } catch (error) {
+        console.error("GA4 sync error:", error);
+
         results.push({
-          source: "GOOGLE_GA4",
+          provider: "GOOGLE_GA4",
           status: "error",
-          detail:
+          reason:
             error instanceof Error ? error.message : "GA4 entity sync failed.",
           rowsSynced: 0,
         });
       }
     } else {
       results.push({
-        source: "GOOGLE_GA4",
+        provider: "GOOGLE_GA4",
         status: "skipped",
-        detail: "The active project does not have a valid numeric GA4 property mapping.",
+        reason: "This project does not have a mapped GA4 property.",
         rowsSynced: 0,
       });
     }
 
-    if (
-      mapping.gscSiteUrl &&
-      (mapping.gscSiteUrl.startsWith("sc-domain:") ||
-        mapping.gscSiteUrl.startsWith("http://") ||
-        mapping.gscSiteUrl.startsWith("https://"))
-    ) {
+    if (mapping.gscSiteUrl) {
       try {
+        const accessToken =
+          await getGoogleSearchConsoleAccessTokenForWorkspace(workspaceId);
+
         const [queryRows, pageRows] = await Promise.all([
           fetchGSCQueryDaily({
-            accessToken,
-            workspaceId: mapping.workspaceId,
+            workspaceId,
             projectSlug: mapping.projectSlug,
             siteUrl: mapping.gscSiteUrl,
+            accessToken,
             from,
             to,
           }),
           fetchGSCPageDaily({
-            accessToken,
-            workspaceId: mapping.workspaceId,
+            workspaceId,
             projectSlug: mapping.projectSlug,
             siteUrl: mapping.gscSiteUrl,
+            accessToken,
             from,
             to,
           }),
         ]);
 
-        const total = Number(queryRows) + Number(pageRows);
+        const total = queryRows + pageRows;
 
         results.push({
-          source: "GOOGLE_GSC",
+          provider: "GOOGLE_GSC",
           status: "success",
-          detail: `${total} rows synced`,
+          reason: `${total} rows synced`,
           rowsSynced: total,
         });
       } catch (error) {
+        console.error("GSC sync error:", error);
+
         results.push({
-          source: "GOOGLE_GSC",
+          provider: "GOOGLE_GSC",
           status: "error",
-          detail:
+          reason:
             error instanceof Error ? error.message : "GSC entity sync failed.",
           rowsSynced: 0,
         });
       }
     } else {
       results.push({
-        source: "GOOGLE_GSC",
+        provider: "GOOGLE_GSC",
         status: "skipped",
-        detail: "The active project does not have a valid Search Console site mapping.",
+        reason: "This project does not have a mapped Search Console site.",
         rowsSynced: 0,
       });
     }
 
-    return NextResponse.json({
-      ok: true,
-      project: {
-        id: mapping.projectId,
-        slug: mapping.projectSlug,
-        label: mapping.projectLabel,
+    const ok = results.every((result) => result.status !== "error");
+
+    return NextResponse.json(
+      {
+        ok,
+        project: {
+          id: mapping.projectId,
+          slug: mapping.projectSlug,
+          label: mapping.projectLabel,
+        },
+        results,
+        summary: results
+          .map(
+            (item) =>
+              `${item.provider}: ${item.status} (${item.rowsSynced})${
+                item.reason ? ` - ${item.reason}` : ""
+              }`,
+          )
+          .join(" · "),
       },
-      results,
-      summary: results
-        .map((item) => `${item.source}: ${item.status} (${item.detail})`)
-        .join(" · "),
-    });
+      { status: ok ? 200 : 207 },
+    );
   } catch (error) {
+    console.error("Sync route fatal error:", error);
+
     const message =
       error instanceof Error ? error.message : "Entity sync failed.";
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: message,
+        results,
+      },
+      { status: 500 },
+    );
   }
 }

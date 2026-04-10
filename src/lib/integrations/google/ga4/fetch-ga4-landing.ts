@@ -19,7 +19,13 @@ function escapeSql(value: string): string {
 }
 
 function normalizePropertyId(propertyId: string): string {
-  return propertyId.replace(/^properties\//, "").trim();
+  const cleaned = propertyId.trim();
+
+  if (cleaned.startsWith("properties/")) {
+    return cleaned.replace(/^properties\//, "");
+  }
+
+  return cleaned;
 }
 
 function normalizeGaDate(value: string): string {
@@ -31,6 +37,9 @@ function normalizeGaDate(value: string): string {
 
 export async function fetchGA4LandingPageDaily(input: Input): Promise<number> {
   const propertyId = normalizePropertyId(input.propertyId);
+
+  console.log("GA4 landing sync propertyId input:", input.propertyId);
+  console.log("GA4 landing sync propertyId normalized:", propertyId);
 
   const response = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
@@ -55,17 +64,20 @@ export async function fetchGA4LandingPageDaily(input: Input): Promise<number> {
   };
 
   if (!response.ok) {
-    throw new Error(payload.error?.message ?? "GA4 landing-page sync failed.");
+    throw new Error(
+      payload.error?.message ??
+        `GA4 landing-page sync failed for property ${propertyId}.`,
+    );
   }
 
   const rows = payload.rows ?? [];
 
   await prisma.$executeRawUnsafe(`
     DELETE FROM ga4_landing_page_daily
-    WHERE workspace_id = '${input.workspaceId.replace(/'/g, "''")}'
-      AND project_slug = '${input.projectSlug.replace(/'/g, "''")}'
-      AND date >= DATE '${input.from.replace(/'/g, "''")}'
-      AND date <= DATE '${input.to.replace(/'/g, "''")}'
+    WHERE workspace_id = '${escapeSql(input.workspaceId)}'
+      AND project_slug = '${escapeSql(input.projectSlug)}'
+      AND date >= DATE '${escapeSql(input.from)}'
+      AND date <= DATE '${escapeSql(input.to)}'
   `);
 
   for (const row of rows) {
@@ -85,11 +97,11 @@ export async function fetchGA4LandingPageDaily(input: Input): Promise<number> {
         sessions
       )
       VALUES (
-        '${input.workspaceId.replace(/'/g, "''")}',
-        '${input.projectSlug.replace(/'/g, "''")}',
-        DATE '${date.replace(/'/g, "''")}',
-        '${landingPage.replace(/'/g, "''")}',
-        '${landingPage.replace(/'/g, "''")}',
+        '${escapeSql(input.workspaceId)}',
+        '${escapeSql(input.projectSlug)}',
+        DATE '${escapeSql(date)}',
+        '${escapeSql(landingPage)}',
+        '${escapeSql(landingPage)}',
         ${Number.isFinite(sessions) ? sessions : 0}
       )
     `);
