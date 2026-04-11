@@ -1,16 +1,11 @@
-import { prisma } from "@/lib/prisma";
 import {
-  CUSTOMER_TABS,
-  MASTER_TABS,
-  OWNER_SYNC_MODE,
-} from "@/lib/intelligence/owner-network/constants";
-import {
-  CUSTOMER_HEADERS,
   MASTER_HEADERS,
+  MASTER_TABS,
+  PROJECT_EXPORT_TABS,
 } from "@/lib/intelligence/owner-network/headers";
 import {
   appendRows,
-  overwriteSheet,
+  clearAndWriteSheet,
   readSheetValues,
   upsertRowByKey,
 } from "@/lib/intelligence/owner-network/google-sheets";
@@ -19,11 +14,11 @@ import { ensureOwnerCustomerSheet } from "@/lib/intelligence/owner-network/custo
 type SyncResult = {
   provider: "GOOGLE_GA4" | "GOOGLE_GSC";
   status: "success" | "error" | "skipped";
-  rowsSynced: number;
   reason: string;
+  rowsSynced: number;
 };
 
-type Input = {
+type ExportNormalizedProjectDataInput = {
   workspaceId: string;
   projectId: string;
   projectSlug: string;
@@ -38,118 +33,98 @@ type Input = {
   results: SyncResult[];
 };
 
-function escapeSql(value: string): string {
-  return value.replace(/'/g, "''");
+function nowIso() {
+  return new Date().toISOString();
 }
 
-function inRange(date: string, from: string, to: string) {
-  return date >= from && date <= to;
+function stringify(value: unknown) {
+  return JSON.stringify(value ?? null);
 }
 
-function toStringValue(value: string | number | null | undefined) {
-  if (value === null || value === undefined) return "";
-  return String(value);
+function buildCustomerSheetUrl(spreadsheetId: string) {
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 }
 
-async function queryRows(
-  sql: string,
-): Promise<Array<Record<string, string | number | null>>> {
-  return prisma.$queryRawUnsafe(sql) as Promise<
-    Array<Record<string, string | number | null>>
-  >;
-}
-
-async function replaceRowsForProjectRange(input: {
+async function replaceWorkspaceTab(args: {
   spreadsheetId: string;
   tabName: string;
   headers: string[];
   workspaceId: string;
-  projectSlug: string;
-  from: string;
-  to: string;
   nextRows: string[][];
 }) {
-  const existing = await readSheetValues(input.spreadsheetId, input.tabName);
-  const rows = existing.length > 0 ? existing : [input.headers];
-  const header = rows[0];
+  const { spreadsheetId, tabName, headers, workspaceId, nextRows } = args;
 
-  const workspaceIndex = header.indexOf("workspace_id");
-  const projectSlugIndex = header.indexOf("project_slug");
-  const dateIndex = header.indexOf("date");
+  const existing = await readSheetValues(spreadsheetId, tabName);
+  const headerRow =
+    existing[0] && existing[0].length > 0 ? existing[0] : headers.slice();
 
-  const keptRows = rows.slice(1).filter((row) => {
-    const rowWorkspaceId = row[workspaceIndex] ?? "";
-    const rowProjectSlug = row[projectSlugIndex] ?? "";
-    const rowDate = row[dateIndex] ?? "";
+  const workspaceIdIndex = headerRow.indexOf("workspace_id");
 
-    const shouldReplace =
-      rowWorkspaceId === input.workspaceId &&
-      rowProjectSlug === input.projectSlug &&
-      inRange(rowDate, input.from, input.to);
+  const retainedRows =
+    workspaceIdIndex >= 0
+      ? existing
+          .slice(1)
+          .filter((row) => (row[workspaceIdIndex] ?? "") !== workspaceId)
+      : existing.slice(1);
 
-    return !shouldReplace;
-  });
-
-  await overwriteSheet(input.spreadsheetId, input.tabName, [
-    input.headers,
-    ...keptRows,
-    ...input.nextRows,
+  await clearAndWriteSheet(spreadsheetId, tabName, [
+    headerRow,
+    ...retainedRows,
+    ...nextRows,
   ]);
 }
 
-export async function exportNormalizedProjectDataToOwnerSheet(input: Input) {
+export async function exportNormalizedProjectDataToOwnerSheet(
+  input: ExportNormalizedProjectDataInput,
+) {
   const network = await ensureOwnerCustomerSheet(input.workspaceId);
-  const now = new Date().toISOString();
+  const syncedAt = nowIso();
+
+  await upsertRowByKey({
+    spreadsheetId: network.masterSpreadsheetId,
+    tabName: MASTER_TABS.customers,
+    headers: [...MASTER_HEADERS.customers],
+    keyHeader: "workspace_id",
+    row: {
+      workspace_id: input.workspaceId,
+      workspace_name: network.workspaceName,
+      workspace_slug: network.workspaceSlug,
+      owner_email: network.ownerEmail,
+      customer_sheet_id: network.customerSpreadsheetId,
+      customer_sheet_url: buildCustomerSheetUrl(network.customerSpreadsheetId),
+      status: "active",
+      created_at: network.createdAt,
+      updated_at: syncedAt,
+    },
+  });
 
   await upsertRowByKey({
     spreadsheetId: network.masterSpreadsheetId,
     tabName: MASTER_TABS.projects,
-    headers: MASTER_HEADERS[MASTER_TABS.projects],
+    headers: [...MASTER_HEADERS.projects],
     keyHeader: "project_id",
     row: {
       workspace_id: input.workspaceId,
       project_id: input.projectId,
       project_slug: input.projectSlug,
       project_label: input.projectLabel,
-      mode: OWNER_SYNC_MODE,
-      status: input.results.every((item) => item.status !== "error")
-        ? "healthy"
-        : "partial_failure",
+      mode: "project_scoped",
+      status:
+        input.results.some((result) => result.status === "error")
+          ? "degraded"
+          : "healthy",
       ga4_property_record_id: input.ga4PropertyRecordId ?? "",
       ga4_property_id: input.ga4PropertyId ?? "",
       ga4_property_label: input.ga4PropertyLabel ?? "",
       gsc_site_record_id: input.gscSiteRecordId ?? "",
       gsc_site_url: input.gscSiteUrl ?? "",
-      last_synced_at: now,
+      last_synced_at: syncedAt,
       customer_sheet_id: network.customerSpreadsheetId,
     },
   });
 
-  await upsertRowByKey({
-    spreadsheetId: network.customerSpreadsheetId,
-    tabName: CUSTOMER_TABS.projects,
-    headers: CUSTOMER_HEADERS[CUSTOMER_TABS.projects],
-    keyHeader: "project_id",
-    row: {
-      workspace_id: input.workspaceId,
-      project_id: input.projectId,
-      project_slug: input.projectSlug,
-      project_label: input.projectLabel,
-      mode: OWNER_SYNC_MODE,
-      status: input.results.every((item) => item.status !== "error")
-        ? "healthy"
-        : "partial_failure",
-      ga4_property_record_id: input.ga4PropertyRecordId ?? "",
-      ga4_property_id: input.ga4PropertyId ?? "",
-      ga4_property_label: input.ga4PropertyLabel ?? "",
-      gsc_site_record_id: input.gscSiteRecordId ?? "",
-      gsc_site_url: input.gscSiteUrl ?? "",
-      last_synced_at: now,
-    },
-  });
-
-  const masterSyncHealthRows = input.results.map((result) => [
-    now,
+  const syncHealthRows = input.results.map((result) => [
+    syncedAt,
     input.workspaceId,
     input.projectId,
     input.projectSlug,
@@ -160,186 +135,112 @@ export async function exportNormalizedProjectDataToOwnerSheet(input: Input) {
     network.customerSpreadsheetId,
   ]);
 
-  await appendRows(
+  if (syncHealthRows.length > 0) {
+    await appendRows(
+      network.masterSpreadsheetId,
+      MASTER_TABS.syncHealth,
+      syncHealthRows,
+    );
+  }
+
+  await replaceWorkspaceTab({
+    spreadsheetId: network.customerSpreadsheetId,
+    tabName: PROJECT_EXPORT_TABS.workspace,
+    headers: [...MASTER_HEADERS.workspace],
+    workspaceId: input.workspaceId,
+    nextRows: [
+      [
+        input.workspaceId,
+        input.projectId,
+        input.projectSlug,
+        input.projectLabel,
+        input.from,
+        input.to,
+      ],
+    ],
+  });
+
+  const ga4SourceRows = await readSheetValues(
     network.masterSpreadsheetId,
-    MASTER_TABS.syncHealth,
-    masterSyncHealthRows,
+    PROJECT_EXPORT_TABS.ga4SourceDaily,
+  );
+  const ga4LandingRows = await readSheetValues(
+    network.masterSpreadsheetId,
+    PROJECT_EXPORT_TABS.ga4LandingPageDaily,
+  );
+  const gscQueryRows = await readSheetValues(
+    network.masterSpreadsheetId,
+    PROJECT_EXPORT_TABS.gscQueryDaily,
+  );
+  const gscPageRows = await readSheetValues(
+    network.masterSpreadsheetId,
+    PROJECT_EXPORT_TABS.gscPageDaily,
   );
 
-  await appendRows(
-    network.customerSpreadsheetId,
-    CUSTOMER_TABS.syncHealth,
-    masterSyncHealthRows.map((row) => row.slice(0, 8)),
-  );
+  const copyProjectRows = async (args: {
+    sourceRows: string[][];
+    tabName: string;
+    headers: string[];
+  }) => {
+    const { sourceRows, tabName, headers } = args;
 
-  const ga4SourceRows = await queryRows(`
-    SELECT
-      date::text AS date,
-      COALESCE(source, '') AS source,
-      COALESCE(medium, '') AS medium,
-      COALESCE(sessions, 0) AS sessions,
-      COALESCE(users, 0) AS users,
-      COALESCE(engaged_sessions, 0) AS engaged_sessions,
-      COALESCE(conversions, 0) AS conversions
-    FROM ga4_source_daily
-    WHERE workspace_id = '${escapeSql(input.workspaceId)}'
-      AND project_slug = '${escapeSql(input.projectSlug)}'
-      AND date >= DATE '${escapeSql(input.from)}'
-      AND date <= DATE '${escapeSql(input.to)}'
-    ORDER BY date ASC
-  `);
+    const headerRow =
+      sourceRows[0] && sourceRows[0].length > 0 ? sourceRows[0] : headers.slice();
 
-  const ga4LandingRows = await queryRows(`
-    SELECT
-      date::text AS date,
-      COALESCE(landing_page, '') AS landing_page,
-      COALESCE(page_path, '') AS page_path,
-      COALESCE(sessions, 0) AS sessions,
-      COALESCE(users, 0) AS users,
-      COALESCE(engaged_sessions, 0) AS engaged_sessions,
-      COALESCE(conversions, 0) AS conversions
-    FROM ga4_landing_page_daily
-    WHERE workspace_id = '${escapeSql(input.workspaceId)}'
-      AND project_slug = '${escapeSql(input.projectSlug)}'
-      AND date >= DATE '${escapeSql(input.from)}'
-      AND date <= DATE '${escapeSql(input.to)}'
-    ORDER BY date ASC
-  `);
+    const workspaceIdIndex = headerRow.indexOf("workspace_id");
+    const projectSlugIndex = headerRow.indexOf("project_slug");
 
-  const gscQueryRows = await queryRows(`
-    SELECT
-      date::text AS date,
-      COALESCE(query, '') AS query,
-      COALESCE(clicks, 0) AS clicks,
-      COALESCE(impressions, 0) AS impressions,
-      COALESCE(ctr, 0) AS ctr,
-      COALESCE(position, 0) AS position
-    FROM gsc_query_daily
-    WHERE workspace_id = '${escapeSql(input.workspaceId)}'
-      AND project_slug = '${escapeSql(input.projectSlug)}'
-      AND date >= DATE '${escapeSql(input.from)}'
-      AND date <= DATE '${escapeSql(input.to)}'
-    ORDER BY date ASC
-  `);
+    const filteredRows =
+      workspaceIdIndex >= 0 && projectSlugIndex >= 0
+        ? sourceRows.slice(1).filter((row) => {
+            return (
+              (row[workspaceIdIndex] ?? "") === input.workspaceId &&
+              (row[projectSlugIndex] ?? "") === input.projectSlug
+            );
+          })
+        : [];
 
-  const gscPageRows = await queryRows(`
-    SELECT
-      date::text AS date,
-      COALESCE(page, '') AS page,
-      COALESCE(clicks, 0) AS clicks,
-      COALESCE(impressions, 0) AS impressions,
-      COALESCE(ctr, 0) AS ctr,
-      COALESCE(position, 0) AS position
-    FROM gsc_page_daily
-    WHERE workspace_id = '${escapeSql(input.workspaceId)}'
-      AND project_slug = '${escapeSql(input.projectSlug)}'
-      AND date >= DATE '${escapeSql(input.from)}'
-      AND date <= DATE '${escapeSql(input.to)}'
-    ORDER BY date ASC
-  `);
+    await clearAndWriteSheet(network.customerSpreadsheetId, tabName, [
+      headerRow,
+      ...filteredRows,
+    ]);
+  };
 
-  await replaceRowsForProjectRange({
-    spreadsheetId: network.customerSpreadsheetId,
-    tabName: CUSTOMER_TABS.ga4SourceDaily,
-    headers: CUSTOMER_HEADERS[CUSTOMER_TABS.ga4SourceDaily],
-    workspaceId: input.workspaceId,
-    projectSlug: input.projectSlug,
-    from: input.from,
-    to: input.to,
-    nextRows: ga4SourceRows.map((row) => [
-      input.workspaceId,
-      input.projectId,
-      input.projectSlug,
-      input.projectLabel,
-      toStringValue(row.date),
-      toStringValue(row.source),
-      toStringValue(row.medium),
-      toStringValue(row.sessions),
-      toStringValue(row.users),
-      toStringValue(row.engaged_sessions),
-      toStringValue(row.conversions),
-      now,
-    ]),
+  await copyProjectRows({
+    sourceRows: ga4SourceRows,
+    tabName: PROJECT_EXPORT_TABS.ga4SourceDaily,
+    headers: [...MASTER_HEADERS.ga4SourceDaily],
   });
 
-  await replaceRowsForProjectRange({
-    spreadsheetId: network.customerSpreadsheetId,
-    tabName: CUSTOMER_TABS.ga4LandingPageDaily,
-    headers: CUSTOMER_HEADERS[CUSTOMER_TABS.ga4LandingPageDaily],
-    workspaceId: input.workspaceId,
-    projectSlug: input.projectSlug,
-    from: input.from,
-    to: input.to,
-    nextRows: ga4LandingRows.map((row) => [
-      input.workspaceId,
-      input.projectId,
-      input.projectSlug,
-      input.projectLabel,
-      toStringValue(row.date),
-      toStringValue(row.landing_page),
-      toStringValue(row.page_path),
-      toStringValue(row.sessions),
-      toStringValue(row.users),
-      toStringValue(row.engaged_sessions),
-      toStringValue(row.conversions),
-      now,
-    ]),
+  await copyProjectRows({
+    sourceRows: ga4LandingRows,
+    tabName: PROJECT_EXPORT_TABS.ga4LandingPageDaily,
+    headers: [...MASTER_HEADERS.ga4LandingPageDaily],
   });
 
-  await replaceRowsForProjectRange({
-    spreadsheetId: network.customerSpreadsheetId,
-    tabName: CUSTOMER_TABS.gscQueryDaily,
-    headers: CUSTOMER_HEADERS[CUSTOMER_TABS.gscQueryDaily],
-    workspaceId: input.workspaceId,
-    projectSlug: input.projectSlug,
-    from: input.from,
-    to: input.to,
-    nextRows: gscQueryRows.map((row) => [
-      input.workspaceId,
-      input.projectId,
-      input.projectSlug,
-      input.projectLabel,
-      toStringValue(row.date),
-      toStringValue(row.query),
-      toStringValue(row.clicks),
-      toStringValue(row.impressions),
-      toStringValue(row.ctr),
-      toStringValue(row.position),
-      now,
-    ]),
+  await copyProjectRows({
+    sourceRows: gscQueryRows,
+    tabName: PROJECT_EXPORT_TABS.gscQueryDaily,
+    headers: [...MASTER_HEADERS.gscQueryDaily],
   });
 
-  await replaceRowsForProjectRange({
-    spreadsheetId: network.customerSpreadsheetId,
-    tabName: CUSTOMER_TABS.gscPageDaily,
-    headers: CUSTOMER_HEADERS[CUSTOMER_TABS.gscPageDaily],
-    workspaceId: input.workspaceId,
-    projectSlug: input.projectSlug,
-    from: input.from,
-    to: input.to,
-    nextRows: gscPageRows.map((row) => [
-      input.workspaceId,
-      input.projectId,
-      input.projectSlug,
-      input.projectLabel,
-      toStringValue(row.date),
-      toStringValue(row.page),
-      toStringValue(row.clicks),
-      toStringValue(row.impressions),
-      toStringValue(row.ctr),
-      toStringValue(row.position),
-      now,
-    ]),
+  await copyProjectRows({
+    sourceRows: gscPageRows,
+    tabName: PROJECT_EXPORT_TABS.gscPageDaily,
+    headers: [...MASTER_HEADERS.gscPageDaily],
   });
 
   return {
+    masterSpreadsheetId: network.masterSpreadsheetId,
     customerSheetId: network.customerSpreadsheetId,
-    customerSheetUrl: network.customerSpreadsheetUrl,
-    exported: {
-      ga4SourceDaily: ga4SourceRows.length,
-      ga4LandingPageDaily: ga4LandingRows.length,
-      gscQueryDaily: gscQueryRows.length,
-      gscPageDaily: gscPageRows.length,
-    },
+    syncedAt,
+    summary: stringify(
+      input.results.map((result) => ({
+        provider: result.provider,
+        status: result.status,
+        rowsSynced: result.rowsSynced,
+        reason: result.reason,
+      })),
+    ),
   };
 }
