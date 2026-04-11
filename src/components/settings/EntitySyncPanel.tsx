@@ -2,11 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-type PanelState =
-  | { status: "idle"; message: string }
-  | { status: "success"; message: string }
-  | { status: "error"; message: string };
-
 type SyncResult = {
   provider: string;
   status: "success" | "error" | "skipped";
@@ -14,16 +9,12 @@ type SyncResult = {
   reason?: string;
 };
 
-type SyncResponse = {
+type SyncPayload = {
   ok?: boolean;
   error?: string;
+  details?: string;
   summary?: string;
   results?: SyncResult[];
-  project?: {
-    id?: string;
-    slug?: string;
-    label?: string;
-  };
 };
 
 export type EntitySyncPanelProps = {
@@ -33,17 +24,18 @@ export type EntitySyncPanelProps = {
   initialTo: string;
 };
 
+type PanelState =
+  | { status: "idle"; message: string }
+  | { status: "success"; message: string }
+  | { status: "error"; message: string };
+
 function normalizeDateInput(value: string) {
   if (!value) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   return "";
 }
 
-function buildResultsSummary(results: SyncResult[]) {
-  if (!results.length) {
-    return "Sync completed.";
-  }
-
+function buildSummaryFromResults(results: SyncResult[]) {
   return results
     .map((item) => {
       if (item.status === "success") {
@@ -61,22 +53,6 @@ function buildResultsSummary(results: SyncResult[]) {
       return `${item.provider}: ${item.reason ?? "error"}`;
     })
     .join(" · ");
-}
-
-function buildFallbackError(payload: SyncResponse) {
-  if (payload.error && payload.error.trim().length > 0) {
-    return payload.error;
-  }
-
-  if (payload.summary && payload.summary.trim().length > 0) {
-    return payload.summary;
-  }
-
-  if (payload.results?.length) {
-    return buildResultsSummary(payload.results);
-  }
-
-  return "Sync failed.";
 }
 
 export function EntitySyncPanel({
@@ -131,32 +107,45 @@ export function EntitySyncPanel({
         }),
       });
 
-      const payload = (await response.json().catch(() => ({}))) as SyncResponse;
+      const rawText = await response.text();
+      let payload: SyncPayload = {};
 
-      if (!response.ok && response.status !== 207) {
-        setState({
-          status: "error",
-          message: buildFallbackError(payload),
-        });
-        return;
+      if (rawText.trim()) {
+        try {
+          payload = JSON.parse(rawText) as SyncPayload;
+        } catch {
+          throw new Error(
+            `Sync route returned non-JSON response (${response.status}): ${rawText.slice(0, 500)}`,
+          );
+        }
       }
 
       const results = payload.results ?? [];
-      const failures = results.filter((item) => item.status === "error");
-
       const message =
-        payload.summary && payload.summary.trim().length > 0
-          ? payload.summary
-          : buildResultsSummary(results);
+        payload.details ||
+        payload.error ||
+        payload.summary ||
+        (results.length > 0 ? buildSummaryFromResults(results) : null) ||
+        (response.ok ? "Sync completed." : "Sync failed.");
+
+      if (!response.ok && response.status !== 207) {
+        throw new Error(message);
+      }
 
       setState({
-        status: failures.length > 0 || payload.ok === false ? "error" : "success",
+        status:
+          payload.error || results.some((result) => result.status === "error")
+            ? "error"
+            : "success",
         message,
       });
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Sync failed.",
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : "Sync failed.",
       });
     } finally {
       setLoading(false);
@@ -182,7 +171,9 @@ export function EntitySyncPanel({
 
       <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1fr_auto]">
         <label className="flex flex-col gap-3">
-          <span className="text-[12px] uppercase tracking-[0.3em] text-white/48">From</span>
+          <span className="text-[12px] uppercase tracking-[0.3em] text-white/48">
+            From
+          </span>
           <input
             type="date"
             value={from}
@@ -192,7 +183,9 @@ export function EntitySyncPanel({
         </label>
 
         <label className="flex flex-col gap-3">
-          <span className="text-[12px] uppercase tracking-[0.3em] text-white/48">To</span>
+          <span className="text-[12px] uppercase tracking-[0.3em] text-white/48">
+            To
+          </span>
           <input
             type="date"
             value={to}
@@ -215,23 +208,35 @@ export function EntitySyncPanel({
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Project</div>
-          <div className="mt-4 text-[20px] font-semibold text-white">{projectLabel}</div>
+          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">
+            Project
+          </div>
+          <div className="mt-4 text-[20px] font-semibold text-white">
+            {projectLabel}
+          </div>
         </div>
 
         <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Project ID</div>
-          <div className="mt-4 text-[20px] font-semibold text-white">{projectSlug}</div>
+          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">
+            Project ID
+          </div>
+          <div className="mt-4 text-[20px] font-semibold text-white">
+            {projectSlug}
+          </div>
         </div>
 
         <div className="rounded-[22px] border border-white/10 bg-black/10 px-6 py-5">
-          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">Range</div>
-          <div className="mt-4 text-[20px] font-semibold text-white">{rangeLabel}</div>
+          <div className="text-[12px] uppercase tracking-[0.28em] text-white/48">
+            Range
+          </div>
+          <div className="mt-4 text-[20px] font-semibold text-white">
+            {rangeLabel}
+          </div>
         </div>
       </div>
 
       <div
-        className={`mt-6 rounded-[22px] border px-5 py-5 text-[16px] leading-8 ${
+        className={`mt-6 rounded-[22px] border px-5 py-5 text-[16px] leading-8 whitespace-pre-wrap break-words ${
           state.status === "error"
             ? "border-rose-400/25 bg-rose-400/10 text-rose-100"
             : state.status === "success"

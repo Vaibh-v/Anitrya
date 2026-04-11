@@ -9,6 +9,9 @@ import { fetchGA4SourceDaily } from "@/lib/integrations/google/ga4/fetch-ga4-sou
 import { fetchGA4LandingPageDaily } from "@/lib/integrations/google/ga4/fetch-ga4-landing";
 import { fetchGSCQueryDaily } from "@/lib/integrations/google/gsc/fetch-gsc-query";
 import { fetchGSCPageDaily } from "@/lib/integrations/google/gsc/fetch-gsc-page";
+import { exportNormalizedProjectDataToOwnerSheet } from "@/lib/intelligence/owner-network/export-normalized-project-data";
+import { runIntelligence } from "@/lib/intelligence/run-intelligence";
+import { exportIntelligenceToSheets } from "@/lib/intelligence/owner-network/export-intelligence-to-sheets";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -61,25 +64,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let mapping;
-    try {
-      mapping = await getProjectMapping({
-        workspaceId,
-        ref: projectRef,
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to resolve project mapping.";
-
-      return NextResponse.json(
-        {
-          ok: false,
-          error: message,
-          results,
-        },
-        { status: 500 },
-      );
-    }
+    const mapping = await getProjectMapping({
+      workspaceId,
+      ref: projectRef,
+    });
 
     if (mapping.ga4PropertyId) {
       try {
@@ -185,6 +173,92 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    let ownerSheetMessage = "";
+    let intelligenceSummaryMessage = "";
+    let intelligenceResultSummary: {
+      insights: number;
+      recommendations: number;
+      masterSpreadsheetId: string;
+      customerSpreadsheetId: string;
+    } | null = null;
+
+    try {
+      const ownerExport = await exportNormalizedProjectDataToOwnerSheet({
+        workspaceId: mapping.workspaceId,
+        projectId: mapping.projectId,
+        projectSlug: mapping.projectSlug,
+        projectLabel: mapping.projectLabel,
+        ga4PropertyRecordId: mapping.ga4PropertyRecordId,
+        ga4PropertyId: mapping.ga4PropertyId,
+        ga4PropertyLabel: mapping.ga4PropertyLabel,
+        gscSiteRecordId: mapping.gscSiteRecordId,
+        gscSiteUrl: mapping.gscSiteUrl,
+        from,
+        to,
+        results,
+      });
+
+      ownerSheetMessage = ` · OWNER_SHEET: mirrored to ${ownerExport.customerSheetId}`;
+
+      try {
+        const intelligenceResult = await runIntelligence({
+          workspaceId: mapping.workspaceId,
+          projectId: mapping.projectId,
+          projectSlug: mapping.projectSlug,
+          projectLabel: mapping.projectLabel,
+          from,
+          to,
+        });
+
+        const intelligenceExport = await exportIntelligenceToSheets({
+          run: {
+            workspaceId: mapping.workspaceId,
+            projectId: mapping.projectId,
+            projectSlug: mapping.projectSlug,
+            projectLabel: mapping.projectLabel,
+            from,
+            to,
+          },
+          output: intelligenceResult,
+        });
+
+        intelligenceResultSummary = {
+          insights: intelligenceResult.insights.length,
+          recommendations: intelligenceResult.recommendations.length,
+          masterSpreadsheetId: intelligenceExport.masterSpreadsheetId,
+          customerSpreadsheetId: intelligenceExport.customerSpreadsheetId,
+        };
+
+        intelligenceSummaryMessage = ` · INTELLIGENCE: ${intelligenceResult.insights.length} insight(s) · ${intelligenceResult.recommendations.length} recommendation(s)`;
+      } catch (intelligenceError) {
+        console.error("Intelligence failed after sync:", intelligenceError);
+        intelligenceSummaryMessage = " · INTELLIGENCE: failed";
+      }
+    } catch (ownerExportError) {
+      console.error("OWNER EXPORT FAILED:", ownerExportError);
+      console.error(
+        "OWNER EXPORT STACK:",
+        ownerExportError instanceof Error
+          ? ownerExportError.stack
+          : String(ownerExportError),
+      );
+
+      const details =
+        ownerExportError instanceof Error
+          ? `${ownerExportError.message}\n${ownerExportError.stack ?? ""}`
+          : String(ownerExportError);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Owner-sheet export failed.",
+          details,
+          results,
+        },
+        { status: 500 },
+      );
+    }
+
     const ok = results.every((result) => result.status !== "error");
 
     return NextResponse.json(
@@ -196,14 +270,18 @@ export async function POST(req: NextRequest) {
           label: mapping.projectLabel,
         },
         results,
-        summary: results
-          .map(
-            (item) =>
-              `${item.provider}: ${item.status} (${item.rowsSynced})${
-                item.reason ? ` - ${item.reason}` : ""
-              }`,
-          )
-          .join(" · "),
+        intelligence: intelligenceResultSummary,
+        summary:
+          results
+            .map(
+              (item) =>
+                `${item.provider}: ${item.status} (${item.rowsSynced})${
+                  item.reason ? ` - ${item.reason}` : ""
+                }`,
+            )
+            .join(" · ") +
+          ownerSheetMessage +
+          intelligenceSummaryMessage,
       },
       { status: ok ? 200 : 207 },
     );

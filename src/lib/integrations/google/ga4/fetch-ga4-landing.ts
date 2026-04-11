@@ -20,12 +20,9 @@ function escapeSql(value: string): string {
 
 function normalizePropertyId(propertyId: string): string {
   const cleaned = propertyId.trim();
-
-  if (cleaned.startsWith("properties/")) {
-    return cleaned.replace(/^properties\//, "");
-  }
-
-  return cleaned;
+  return cleaned.startsWith("properties/")
+    ? cleaned.replace(/^properties\//, "")
+    : cleaned;
 }
 
 function normalizeGaDate(value: string): string {
@@ -37,9 +34,6 @@ function normalizeGaDate(value: string): string {
 
 export async function fetchGA4LandingPageDaily(input: Input): Promise<number> {
   const propertyId = normalizePropertyId(input.propertyId);
-
-  console.log("GA4 landing sync propertyId input:", input.propertyId);
-  console.log("GA4 landing sync propertyId normalized:", propertyId);
 
   const response = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
@@ -80,13 +74,26 @@ export async function fetchGA4LandingPageDaily(input: Input): Promise<number> {
       AND date <= DATE '${escapeSql(input.to)}'
   `);
 
-  for (const row of rows) {
-    const date = normalizeGaDate(row.dimensionValues?.[0]?.value ?? "");
-    const landingPage = row.dimensionValues?.[1]?.value ?? "(not set)";
-    const sessions = Number(row.metricValues?.[0]?.value ?? "0");
+  const normalizedRows = rows
+    .map((row) => {
+      const date = normalizeGaDate(row.dimensionValues?.[0]?.value ?? "");
+      const landingPage = row.dimensionValues?.[1]?.value ?? "(not set)";
+      const sessions = Number(row.metricValues?.[0]?.value ?? "0");
 
-    if (!date) continue;
+      if (!date) return null;
 
+      return `(
+        '${escapeSql(input.workspaceId)}',
+        '${escapeSql(input.projectSlug)}',
+        DATE '${escapeSql(date)}',
+        '${escapeSql(landingPage)}',
+        '${escapeSql(landingPage)}',
+        ${Number.isFinite(sessions) ? sessions : 0}
+      )`;
+    })
+    .filter((value): value is string => Boolean(value));
+
+  if (normalizedRows.length > 0) {
     await prisma.$executeRawUnsafe(`
       INSERT INTO ga4_landing_page_daily (
         workspace_id,
@@ -96,16 +103,9 @@ export async function fetchGA4LandingPageDaily(input: Input): Promise<number> {
         page_path,
         sessions
       )
-      VALUES (
-        '${escapeSql(input.workspaceId)}',
-        '${escapeSql(input.projectSlug)}',
-        DATE '${escapeSql(date)}',
-        '${escapeSql(landingPage)}',
-        '${escapeSql(landingPage)}',
-        ${Number.isFinite(sessions) ? sessions : 0}
-      )
+      VALUES ${normalizedRows.join(",\n")}
     `);
   }
 
-  return rows.length;
+  return normalizedRows.length;
 }

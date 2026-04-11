@@ -22,8 +22,6 @@ function escapeSql(value: string): string {
 }
 
 export async function fetchGSCPageDaily(input: Input): Promise<number> {
-  console.log("GSC page sync siteUrl:", input.siteUrl);
-
   const response = await fetch(
     `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(
       input.siteUrl,
@@ -65,11 +63,26 @@ export async function fetchGSCPageDaily(input: Input): Promise<number> {
       AND date <= DATE '${escapeSql(input.to)}'
   `);
 
-  for (const row of rows) {
-    const date = row.keys?.[0] ?? "";
-    const page = row.keys?.[1] ?? "";
-    if (!date) continue;
+  const normalizedRows = rows
+    .map((row) => {
+      const date = row.keys?.[0] ?? "";
+      const page = row.keys?.[1] ?? "";
+      if (!date) return null;
 
+      return `(
+        '${escapeSql(input.workspaceId)}',
+        '${escapeSql(input.projectSlug)}',
+        DATE '${escapeSql(date)}',
+        '${escapeSql(page)}',
+        ${Number(row.clicks ?? 0)},
+        ${Number(row.impressions ?? 0)},
+        ${Number(row.ctr ?? 0)},
+        ${Number(row.position ?? 0)}
+      )`;
+    })
+    .filter((value): value is string => Boolean(value));
+
+  if (normalizedRows.length > 0) {
     await prisma.$executeRawUnsafe(`
       INSERT INTO gsc_page_daily (
         workspace_id,
@@ -81,18 +94,9 @@ export async function fetchGSCPageDaily(input: Input): Promise<number> {
         ctr,
         position
       )
-      VALUES (
-        '${escapeSql(input.workspaceId)}',
-        '${escapeSql(input.projectSlug)}',
-        DATE '${escapeSql(date)}',
-        '${escapeSql(page)}',
-        ${Number(row.clicks ?? 0)},
-        ${Number(row.impressions ?? 0)},
-        ${Number(row.ctr ?? 0)},
-        ${Number(row.position ?? 0)}
-      )
+      VALUES ${normalizedRows.join(",\n")}
     `);
   }
 
-  return rows.length;
+  return normalizedRows.length;
 }
