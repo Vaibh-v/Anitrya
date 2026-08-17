@@ -16,7 +16,8 @@ const NEXTAUTH_SECRET =
   process.env.NEXTAUTH_SECRET ||
   process.env.AUTH_SECRET ||
   process.env.APP_SECRET ||
-  process.env.GOOGLE_CLIENT_SECRET;
+  process.env.GOOGLE_CLIENT_SECRET ||
+  process.env.DATABASE_URL;
 
 function mergeScopes(existing: string | null | undefined, next: string | null | undefined) {
   const scopes = new Set(
