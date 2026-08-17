@@ -59,6 +59,11 @@ export const googleGscSyncRunner: IntegrationSyncRunner = {
       status: "success",
       reason: `${total} rows synced`,
       rowsSynced: total,
+      details: {
+        queryRows,
+        pageRows,
+        siteUrl,
+      },
     };
   },
 };
