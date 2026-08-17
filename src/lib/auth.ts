@@ -30,6 +30,24 @@ function mergeScopes(existing: string | null | undefined, next: string | null | 
   return scopes.size > 0 ? Array.from(scopes).join(" ") : null;
 }
 
+async function getSessionContextByEmail(email: string) {
+  const dbUser = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (!dbUser) return null;
+
+  const workspace = await ensureWorkspaceForUser({
+    userId: dbUser.id,
+    email: dbUser.email,
+  });
+
+  return {
+    userId: dbUser.id,
+    workspaceId: workspace.id,
+  };
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
@@ -121,19 +139,17 @@ export const authOptions: NextAuthOptions = {
     },
 
     async jwt({ token, user }) {
-      if (user?.email) {
-        const dbUser = await prisma.user.findUnique({
-          where: { email: user.email },
-        });
+      const email = user?.email ?? (typeof token.email === "string" ? token.email : null);
 
-        if (dbUser) {
-          const workspace = await ensureWorkspaceForUser({
-            userId: dbUser.id,
-            email: dbUser.email,
-          });
+      if (
+        email &&
+        (typeof token.userId !== "string" || typeof token.workspaceId !== "string")
+      ) {
+        const sessionContext = await getSessionContextByEmail(email);
 
-          token.userId = dbUser.id;
-          token.workspaceId = workspace.id;
+        if (sessionContext) {
+          token.userId = sessionContext.userId;
+          token.workspaceId = sessionContext.workspaceId;
         }
       }
 
