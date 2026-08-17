@@ -87,7 +87,7 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
     label: "Google Business Profile",
     lifecycle: "preserved",
     connectionMode: "oauth",
-    capabilities: ["sync", "normalization", "reasoning_input", "entity_mapping", "export_support"],
+    capabilities: ["discovery", "sync", "normalization", "reasoning_input", "entity_mapping", "export_support"],
     powersSettings: true,
     powersSync: false,
     powersEvidence: false,
