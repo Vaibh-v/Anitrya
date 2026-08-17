@@ -4,6 +4,8 @@ import type {
   IntegrationKey,
   IntegrationLifecycle,
 } from "@/lib/integrations/integration-contracts";
+import type { ProviderCapabilityMatrix } from "@/lib/integrations/provider-capabilities";
+import { buildProviderCapabilityMatrix } from "@/lib/integrations/provider-capabilities";
 
 export type ProviderRegistryItem = {
   key: IntegrationKey;
@@ -189,4 +191,17 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
 
 export function getProviderRegistryItem(key: IntegrationKey) {
   return PROVIDER_REGISTRY.find((item) => item.key === key) ?? null;
+}
+
+export function getProviderCapabilityMatrix(
+  provider: ProviderRegistryItem,
+): ProviderCapabilityMatrix {
+  return buildProviderCapabilityMatrix({
+    key: provider.key,
+    lifecycle: provider.lifecycle,
+    capabilities: provider.capabilities,
+    powersSync: provider.powersSync,
+    powersEvidence: provider.powersEvidence,
+    powersIntelligence: provider.powersIntelligence,
+  });
 }
