@@ -11,9 +11,7 @@ export async function runGSCSync(input: {
   from: string;
   to: string;
 }) {
-  await getWorkspaceGoogleAccessToken(input.session, {
-    acceptedProviders: ["GOOGLE_GSC"],
-  });
+  await getWorkspaceGoogleAccessToken(input.workspaceId);
 
   return {
     source: "google_gsc",

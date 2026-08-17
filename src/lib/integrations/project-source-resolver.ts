@@ -24,9 +24,18 @@ export async function resolveProjectSources(input: {
       name: true,
       slug: true,
       ga4PropertyId: true,
-      ga4PropertyLabel: true,
-      gscSiteUrl: true,
-      gscSiteLabel: true,
+      ga4Property: {
+        select: {
+          propertyName: true,
+          displayName: true,
+          accountName: true,
+        },
+      },
+      gscSite: {
+        select: {
+          siteUrl: true,
+        },
+      },
     },
   });
 
@@ -47,8 +56,11 @@ export async function resolveProjectSources(input: {
     projectLabel: project.name,
     workspaceId: input.workspaceId,
     ga4PropertyId: project.ga4PropertyId ?? null,
-    ga4PropertyLabel: project.ga4PropertyLabel ?? null,
-    gscSiteUrl: project.gscSiteUrl ?? null,
-    gscSiteLabel: project.gscSiteLabel ?? null,
+    ga4PropertyLabel:
+      project.ga4Property?.displayName ??
+      project.ga4Property?.propertyName ??
+      null,
+    gscSiteUrl: project.gscSite?.siteUrl ?? null,
+    gscSiteLabel: project.gscSite?.siteUrl ?? null,
   };
 }

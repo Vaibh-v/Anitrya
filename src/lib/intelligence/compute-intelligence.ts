@@ -1,5 +1,6 @@
 import type {
   DiagnosticsSection,
+  IntelligenceFinding,
   ProjectDiagnostics,
   ProjectEvidence,
 } from "@/lib/evidence/types";
@@ -31,8 +32,23 @@ function buildSectionFromHypotheses(
     title,
     summary: top.summary,
     confidence: top.confidence,
-    actions: top.nextSteps,
+    actions: [top.nextStep],
   };
+}
+
+function findingsFromHypotheses(
+  hypotheses: RankedHypothesis[],
+): IntelligenceFinding[] {
+  return hypotheses.map((hypothesis) => ({
+    title: hypothesis.title,
+    summary: hypothesis.summary,
+    evidence: hypothesis.evidence,
+    confidence: hypothesis.confidence,
+    nextSteps:
+      hypothesis.actions.length > 0
+        ? hypothesis.actions
+        : [hypothesis.nextStep],
+  }));
 }
 
 export function computeProjectDiagnostics(
@@ -101,7 +117,7 @@ export function computeProjectDiagnostics(
     (item) => item.category === "behavior"
   );
   const crossSourceHypotheses = ranked.filter(
-    (item) => item.category === "crossSource"
+    (item) => item.category === "cross_source"
   );
 
   return {
@@ -141,8 +157,12 @@ export function computeProjectDiagnostics(
         "Inspect whether acquisition quality supports the demand being captured.",
       ]
     ),
-    seoFindings: findingsForCategory(evidence, "seo"),
-    behaviorFindings: findingsForCategory(evidence, "behavior"),
-    crossSourceFindings: findingsForCategory(evidence, "crossSource"),
+    seoFindings: findingsFromHypotheses(findingsForCategory(evidence, "seo")),
+    behaviorFindings: findingsFromHypotheses(
+      findingsForCategory(evidence, "behavior"),
+    ),
+    crossSourceFindings: findingsFromHypotheses(
+      findingsForCategory(evidence, "cross_source"),
+    ),
   };
 }

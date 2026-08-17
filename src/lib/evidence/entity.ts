@@ -9,6 +9,7 @@ export function buildGSCQueryRows(rows: any[]): GSCQueryRow[] {
   return rows
     .map((r) => ({
       query: r.keys?.[0] ?? "",
+      page: r.keys?.[1] ?? "",
       clicks: r.clicks ?? 0,
       impressions: r.impressions ?? 0,
       ctr: r.ctr ?? 0,

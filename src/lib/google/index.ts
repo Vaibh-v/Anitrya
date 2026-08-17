@@ -16,6 +16,57 @@ function buildOAuthClient(accessToken: string) {
   return auth;
 }
 
+type SessionWithAccessToken = {
+  accessToken?: string | null;
+};
+
+type GscQueryPageOptions = {
+  siteUrl: string;
+  startDate: string;
+  endDate: string;
+  rowLimit?: number;
+};
+
+type Ga4ReportOptions = {
+  startDate: string;
+  endDate: string;
+  limit?: number;
+};
+
+type GoogleApiErrorPayload = {
+  error?: {
+    message?: string;
+  };
+};
+
+export function getAccessToken(session: SessionWithAccessToken): string {
+  const accessToken = session.accessToken?.trim();
+
+  if (!accessToken) {
+    throw new Error("Google access token is missing from the current session.");
+  }
+
+  return accessToken;
+}
+
+function normalizePropertyName(propertyName: string) {
+  const cleaned = propertyName.trim();
+  return cleaned.startsWith("properties/") ? cleaned : `properties/${cleaned}`;
+}
+
+async function readGoogleJson<T>(
+  response: Response,
+  fallbackMessage: string,
+): Promise<T> {
+  const payload = (await response.json()) as T & GoogleApiErrorPayload;
+
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? fallbackMessage);
+  }
+
+  return payload;
+}
+
 export async function gaListProperties(
   accessToken: string,
 ): Promise<GAPropertyOption[]> {
@@ -79,4 +130,118 @@ export async function gscListSites(
       };
     })
     .filter((value): value is GSCSiteOption => value !== null);
+}
+
+export async function gscQueryPageRows(
+  accessToken: string,
+  options: GscQueryPageOptions,
+) {
+  const response = await fetch(
+    `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(
+      options.siteUrl,
+    )}/searchAnalytics/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        startDate: options.startDate,
+        endDate: options.endDate,
+        dimensions: ["query", "page"],
+        rowLimit: options.rowLimit ?? 1000,
+      }),
+    },
+  );
+
+  const payload = await readGoogleJson<{
+    rows?: Array<{
+      keys?: string[];
+      clicks?: number;
+      impressions?: number;
+      ctr?: number;
+      position?: number;
+    }>;
+  }>(response, `GSC query/page request failed for ${options.siteUrl}.`);
+
+  return payload.rows ?? [];
+}
+
+export async function gaLandingPageRows(
+  accessToken: string,
+  propertyName: string,
+  options: Ga4ReportOptions,
+) {
+  const normalizedPropertyName = normalizePropertyName(propertyName);
+
+  const response = await fetch(
+    `https://analyticsdata.googleapis.com/v1beta/${normalizedPropertyName}:runReport`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: options.startDate, endDate: options.endDate }],
+        dimensions: [{ name: "landingPage" }],
+        metrics: [
+          { name: "sessions" },
+          { name: "activeUsers" },
+          { name: "conversions" },
+          { name: "engagementRate" },
+        ],
+        limit: options.limit ?? 1000,
+      }),
+    },
+  );
+
+  const payload = await readGoogleJson<{
+    rows?: Array<{
+      dimensionValues?: Array<{ value?: string | null }>;
+      metricValues?: Array<{ value?: string | null }>;
+    }>;
+  }>(response, `GA4 landing-page request failed for ${normalizedPropertyName}.`);
+
+  return payload.rows ?? [];
+}
+
+export async function gaSourceMediumRows(
+  accessToken: string,
+  propertyName: string,
+  options: Ga4ReportOptions,
+) {
+  const normalizedPropertyName = normalizePropertyName(propertyName);
+
+  const response = await fetch(
+    `https://analyticsdata.googleapis.com/v1beta/${normalizedPropertyName}:runReport`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: options.startDate, endDate: options.endDate }],
+        dimensions: [{ name: "sessionSourceMedium" }],
+        metrics: [
+          { name: "sessions" },
+          { name: "activeUsers" },
+          { name: "conversions" },
+          { name: "engagementRate" },
+        ],
+        limit: options.limit ?? 250,
+      }),
+    },
+  );
+
+  const payload = await readGoogleJson<{
+    rows?: Array<{
+      dimensionValues?: Array<{ value?: string | null }>;
+      metricValues?: Array<{ value?: string | null }>;
+    }>;
+  }>(response, `GA4 source/medium request failed for ${normalizedPropertyName}.`);
+
+  return payload.rows ?? [];
 }

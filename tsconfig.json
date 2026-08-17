@@ -23,8 +23,7 @@
         "name": "next"
       }
     ],
-    "types": ["node", "react", "react-dom"],
-    "ignoreDeprecations": "6.0"
+    "types": ["node", "react", "react-dom"]
   },
   "include": [
     "next-env.d.ts",

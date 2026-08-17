@@ -1,8 +1,11 @@
 import {
+  CUSTOMER_HEADERS,
   MASTER_HEADERS,
-  MASTER_TABS,
-  PROJECT_EXPORT_TABS,
 } from "@/lib/intelligence/owner-network/headers";
+import {
+  CUSTOMER_TABS,
+  MASTER_TABS,
+} from "@/lib/intelligence/owner-network/constants";
 import {
   appendRows,
   clearAndWriteSheet,
@@ -93,7 +96,7 @@ export async function exportNormalizedProjectDataToOwnerSheet(
       customer_sheet_id: network.customerSpreadsheetId,
       customer_sheet_url: buildCustomerSheetUrl(network.customerSpreadsheetId),
       status: "active",
-      created_at: network.createdAt,
+      created_at: syncedAt,
       updated_at: syncedAt,
     },
   });
@@ -145,8 +148,8 @@ export async function exportNormalizedProjectDataToOwnerSheet(
 
   await replaceWorkspaceTab({
     spreadsheetId: network.customerSpreadsheetId,
-    tabName: PROJECT_EXPORT_TABS.workspace,
-    headers: [...MASTER_HEADERS.workspace],
+    tabName: CUSTOMER_TABS.projects,
+    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.projects]],
     workspaceId: input.workspaceId,
     nextRows: [
       [
@@ -154,27 +157,35 @@ export async function exportNormalizedProjectDataToOwnerSheet(
         input.projectId,
         input.projectSlug,
         input.projectLabel,
-        input.from,
-        input.to,
+        "project_scoped",
+        input.results.some((result) => result.status === "error")
+          ? "degraded"
+          : "healthy",
+        input.ga4PropertyRecordId ?? "",
+        input.ga4PropertyId ?? "",
+        input.ga4PropertyLabel ?? "",
+        input.gscSiteRecordId ?? "",
+        input.gscSiteUrl ?? "",
+        syncedAt,
       ],
     ],
   });
 
   const ga4SourceRows = await readSheetValues(
     network.masterSpreadsheetId,
-    PROJECT_EXPORT_TABS.ga4SourceDaily,
+    CUSTOMER_TABS.ga4SourceDaily,
   );
   const ga4LandingRows = await readSheetValues(
     network.masterSpreadsheetId,
-    PROJECT_EXPORT_TABS.ga4LandingPageDaily,
+    CUSTOMER_TABS.ga4LandingPageDaily,
   );
   const gscQueryRows = await readSheetValues(
     network.masterSpreadsheetId,
-    PROJECT_EXPORT_TABS.gscQueryDaily,
+    CUSTOMER_TABS.gscQueryDaily,
   );
   const gscPageRows = await readSheetValues(
     network.masterSpreadsheetId,
-    PROJECT_EXPORT_TABS.gscPageDaily,
+    CUSTOMER_TABS.gscPageDaily,
   );
 
   const copyProjectRows = async (args: {
@@ -208,26 +219,26 @@ export async function exportNormalizedProjectDataToOwnerSheet(
 
   await copyProjectRows({
     sourceRows: ga4SourceRows,
-    tabName: PROJECT_EXPORT_TABS.ga4SourceDaily,
-    headers: [...MASTER_HEADERS.ga4SourceDaily],
+    tabName: CUSTOMER_TABS.ga4SourceDaily,
+    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.ga4SourceDaily]],
   });
 
   await copyProjectRows({
     sourceRows: ga4LandingRows,
-    tabName: PROJECT_EXPORT_TABS.ga4LandingPageDaily,
-    headers: [...MASTER_HEADERS.ga4LandingPageDaily],
+    tabName: CUSTOMER_TABS.ga4LandingPageDaily,
+    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.ga4LandingPageDaily]],
   });
 
   await copyProjectRows({
     sourceRows: gscQueryRows,
-    tabName: PROJECT_EXPORT_TABS.gscQueryDaily,
-    headers: [...MASTER_HEADERS.gscQueryDaily],
+    tabName: CUSTOMER_TABS.gscQueryDaily,
+    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gscQueryDaily]],
   });
 
   await copyProjectRows({
     sourceRows: gscPageRows,
-    tabName: PROJECT_EXPORT_TABS.gscPageDaily,
-    headers: [...MASTER_HEADERS.gscPageDaily],
+    tabName: CUSTOMER_TABS.gscPageDaily,
+    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gscPageDaily]],
   });
 
   return {

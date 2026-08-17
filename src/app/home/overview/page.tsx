@@ -38,11 +38,10 @@ export default async function OverviewPage({ searchParams }: PageProps) {
   const params = (await searchParams) ?? {};
   const session = await requireSession();
 
-  const selectedProject = resolveSelectedProject({
-    requestedProjectId: params.project ?? null,
-    requestedProjectName: params.projectName ?? null,
-    sessionWorkspaceId: session.user?.workspaceId ?? params.workspace ?? null,
-    fallbackProjectId: "default-project",
+  const workspaceId = session.user?.workspaceId ?? params.workspace ?? null;
+  const selectedProject = await resolveSelectedProject({
+    workspaceId,
+    projectSlug: params.project ?? null,
   });
 
   const dateRange = resolveDateRange({
@@ -51,9 +50,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     to: params.to,
   });
 
-  const projectId = selectedProject.projectId;
-  const projectLabel = selectedProject.displayName;
-  const workspaceId = session.user?.workspaceId ?? params.workspace ?? null;
+  const projectId = selectedProject?.slug ?? "default-project";
+  const projectLabel = selectedProject?.name ?? params.projectName ?? "No project selected";
 
   const navContext = {
     projectId,
@@ -67,7 +65,7 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     <main className="space-y-8">
       <ProjectContextSection
         activeProjectLabel={projectLabel}
-        activeProjectId={selectedProject.hasProject ? projectId : null}
+        activeProjectId={selectedProject ? projectId : null}
         cards={[
           {
             label: "Clara AI",
