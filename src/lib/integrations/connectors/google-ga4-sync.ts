@@ -59,6 +59,11 @@ export const googleGa4SyncRunner: IntegrationSyncRunner = {
       status: "success",
       reason: `${total} rows synced`,
       rowsSynced: total,
+      details: {
+        sourceRows,
+        landingRows,
+        propertyId,
+      },
     };
   },
 };

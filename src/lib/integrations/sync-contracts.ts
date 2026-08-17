@@ -9,6 +9,7 @@ export type IntegrationSyncResult = {
   status: IntegrationSyncStatus;
   reason: string;
   rowsSynced: number;
+  details?: Record<string, unknown>;
 };
 
 export type IntegrationSyncContext = {

@@ -2,6 +2,7 @@ import type {
   IntegrationSyncContext,
   IntegrationSyncResult,
 } from "@/lib/integrations/sync-contracts";
+import { recordIntegrationSyncResult } from "@/lib/integrations/sync-audit";
 import { integrationSyncRegistry } from "@/lib/integrations/sync-registry";
 
 export async function runProjectIntegrationSyncs(
@@ -11,21 +12,26 @@ export async function runProjectIntegrationSyncs(
 
   for (const runner of integrationSyncRegistry) {
     if (!runner.canRun(context)) {
-      results.push({
+      const result: IntegrationSyncResult = {
         provider: runner.provider,
         status: "skipped",
         reason: runner.skipReason(context),
         rowsSynced: 0,
-      });
+      };
+
+      await recordIntegrationSyncResult({ context, result });
+      results.push(result);
       continue;
     }
 
     try {
-      results.push(await runner.sync(context));
+      const result = await runner.sync(context);
+      await recordIntegrationSyncResult({ context, result });
+      results.push(result);
     } catch (error) {
       console.error(`${runner.provider} sync error:`, error);
 
-      results.push({
+      const result: IntegrationSyncResult = {
         provider: runner.provider,
         status: "error",
         reason:
@@ -33,7 +39,10 @@ export async function runProjectIntegrationSyncs(
             ? error.message
             : `${runner.provider} entity sync failed.`,
         rowsSynced: 0,
-      });
+      };
+
+      await recordIntegrationSyncResult({ context, result });
+      results.push(result);
     }
   }
 
