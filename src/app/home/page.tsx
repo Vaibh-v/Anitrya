@@ -1,4 +1,6 @@
-import { requireSession } from "@/lib/auth";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
 import { getOverviewEvidenceSummary } from "@/lib/evidence/normalized-overview-store";
 
@@ -51,7 +53,12 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default async function HomePage(props: PageProps) {
-  const session = await requireSession();
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    redirect("/");
+  }
+
   const workspaceId = session.user?.workspaceId;
 
   if (!workspaceId) {
