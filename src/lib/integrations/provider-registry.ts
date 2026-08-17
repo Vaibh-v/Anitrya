@@ -66,7 +66,6 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
     requiresWorkspaceToken: true,
     evidenceTargets: ["intelligence", "overview"],
     blockedByDefault: [
-      "Google Ads discovery requires server-side GOOGLE_ADS_DEVELOPER_TOKEN configuration.",
       "Provider is preserved but not yet wired into customer mapping or normalized paid-media sync.",
     ],
   },
