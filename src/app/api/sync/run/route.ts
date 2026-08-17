@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
-import {
-  getGoogleAnalyticsAccessTokenForWorkspace,
-  getGoogleSearchConsoleAccessTokenForWorkspace,
-} from "@/lib/google/tokens";
 import { getProjectMapping } from "@/lib/project/project-mapper";
-import { fetchGA4SourceDaily } from "@/lib/integrations/google/ga4/fetch-ga4-source-daily";
-import { fetchGA4LandingPageDaily } from "@/lib/integrations/google/ga4/fetch-ga4-landing";
-import { fetchGSCQueryDaily } from "@/lib/integrations/google/gsc/fetch-gsc-query";
-import { fetchGSCPageDaily } from "@/lib/integrations/google/gsc/fetch-gsc-page";
+import type { IntegrationSyncResult } from "@/lib/integrations/sync-contracts";
+import { runProjectIntegrationSyncs } from "@/lib/integrations/run-project-integration-syncs";
 import { exportNormalizedProjectDataToOwnerSheet } from "@/lib/intelligence/owner-network/export-normalized-project-data";
 import { runIntelligence } from "@/lib/intelligence/run-intelligence";
 import { exportIntelligenceToSheets } from "@/lib/intelligence/owner-network/export-intelligence-to-sheets";
@@ -19,12 +13,7 @@ function asString(value: unknown): string | null {
     : null;
 }
 
-type SyncResult = {
-  provider: "GOOGLE_GA4" | "GOOGLE_GSC";
-  status: "success" | "error" | "skipped";
-  reason: string;
-  rowsSynced: number;
-};
+type SyncResult = IntegrationSyncResult;
 
 export async function POST(req: NextRequest) {
   const results: SyncResult[] = [];
@@ -69,109 +58,14 @@ export async function POST(req: NextRequest) {
       ref: projectRef,
     });
 
-    if (mapping.ga4PropertyId) {
-      try {
-        const accessToken =
-          await getGoogleAnalyticsAccessTokenForWorkspace(workspaceId);
-
-        const [sourceRows, landingRows] = await Promise.all([
-          fetchGA4SourceDaily({
-            workspaceId,
-            projectSlug: mapping.projectSlug,
-            propertyId: mapping.ga4PropertyId,
-            accessToken,
-            from,
-            to,
-          }),
-          fetchGA4LandingPageDaily({
-            workspaceId,
-            projectSlug: mapping.projectSlug,
-            propertyId: mapping.ga4PropertyId,
-            accessToken,
-            from,
-            to,
-          }),
-        ]);
-
-        const total = sourceRows + landingRows;
-
-        results.push({
-          provider: "GOOGLE_GA4",
-          status: "success",
-          reason: `${total} rows synced`,
-          rowsSynced: total,
-        });
-      } catch (error) {
-        console.error("GA4 sync error:", error);
-
-        results.push({
-          provider: "GOOGLE_GA4",
-          status: "error",
-          reason:
-            error instanceof Error ? error.message : "GA4 entity sync failed.",
-          rowsSynced: 0,
-        });
-      }
-    } else {
-      results.push({
-        provider: "GOOGLE_GA4",
-        status: "skipped",
-        reason: "This project does not have a mapped GA4 property.",
-        rowsSynced: 0,
-      });
-    }
-
-    if (mapping.gscSiteUrl) {
-      try {
-        const accessToken =
-          await getGoogleSearchConsoleAccessTokenForWorkspace(workspaceId);
-
-        const [queryRows, pageRows] = await Promise.all([
-          fetchGSCQueryDaily({
-            workspaceId,
-            projectSlug: mapping.projectSlug,
-            siteUrl: mapping.gscSiteUrl,
-            accessToken,
-            from,
-            to,
-          }),
-          fetchGSCPageDaily({
-            workspaceId,
-            projectSlug: mapping.projectSlug,
-            siteUrl: mapping.gscSiteUrl,
-            accessToken,
-            from,
-            to,
-          }),
-        ]);
-
-        const total = queryRows + pageRows;
-
-        results.push({
-          provider: "GOOGLE_GSC",
-          status: "success",
-          reason: `${total} rows synced`,
-          rowsSynced: total,
-        });
-      } catch (error) {
-        console.error("GSC sync error:", error);
-
-        results.push({
-          provider: "GOOGLE_GSC",
-          status: "error",
-          reason:
-            error instanceof Error ? error.message : "GSC entity sync failed.",
-          rowsSynced: 0,
-        });
-      }
-    } else {
-      results.push({
-        provider: "GOOGLE_GSC",
-        status: "skipped",
-        reason: "This project does not have a mapped Search Console site.",
-        rowsSynced: 0,
-      });
-    }
+    results.push(
+      ...(await runProjectIntegrationSyncs({
+        workspaceId,
+        mapping,
+        from,
+        to,
+      })),
+    );
 
     let ownerSheetMessage = "";
     let intelligenceSummaryMessage = "";

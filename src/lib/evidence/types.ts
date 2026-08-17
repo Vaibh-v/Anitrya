@@ -1,5 +1,14 @@
 export type ConfidenceLevel = "low" | "medium" | "high";
 export type EvidenceTone = "neutral" | "positive" | "negative" | "warning";
+export type Direction = "up" | "down" | "flat";
+
+export type MetricDelta = {
+  current: number;
+  previous: number;
+  absoluteChange: number;
+  percentChange: number | null;
+  direction: Direction;
+};
 
 export type TrendPoint = {
   label: string;

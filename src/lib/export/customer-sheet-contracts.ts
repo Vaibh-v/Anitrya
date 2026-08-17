@@ -9,6 +9,23 @@ export type CustomerSheetExport = {
   tabs: CustomerSheetTab[];
 };
 
+export type CustomerExportRecord = {
+  id: string;
+  createdAt: string;
+  workspaceId: string | null;
+  projectSlug: string;
+  projectLabel: string;
+  spreadsheetId: string;
+  spreadsheetUrl?: string | null;
+  from: string;
+  to: string;
+  generatedAt: string;
+  tabCount?: number;
+  rowCount?: number;
+  status?: "success" | "error";
+  message?: string | null;
+};
+
 export type BuildCustomerSheetExportInput = {
   spreadsheetId: string;
   projectId: string;

@@ -7,7 +7,10 @@ export async function GET(request: NextRequest) {
     const { workspace } = await requireAuth();
     const project = request.nextUrl.searchParams.get("project");
 
-    const intelligence = await getProjectIntelligence(workspace.id, project);
+    const intelligence = await getProjectIntelligence({
+      workspaceId: workspace.id,
+      projectSlug: project,
+    });
 
     if (!intelligence) {
       return NextResponse.json(

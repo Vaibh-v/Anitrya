@@ -7,12 +7,16 @@ type Props = {
   projectId: string;
   projectLabel: string;
   workspaceId: string;
+  from?: string;
+  to?: string;
 };
 
 export function SettingsControlBar({
   projectId,
   projectLabel,
   workspaceId,
+  from = "",
+  to = "",
 }: Props) {
   return (
     <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5 md:p-6">
@@ -66,7 +70,12 @@ export function SettingsControlBar({
 
         <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[360px]">
           <SyncRunButton projectId={projectId} />
-          <CustomerSheetExportButton projectId={projectId} />
+          <CustomerSheetExportButton
+            projectId={projectId}
+            projectLabel={projectLabel}
+            from={from}
+            to={to}
+          />
         </div>
       </div>
     </div>

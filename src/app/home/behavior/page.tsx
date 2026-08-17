@@ -38,7 +38,7 @@ export default async function BehaviorPage(props: PageProps) {
   const to = searchParams.to ?? defaultTo;
 
   const project = await getProjectMapping({
-    projectRef,
+    ref: projectRef,
     workspaceId,
   });
 

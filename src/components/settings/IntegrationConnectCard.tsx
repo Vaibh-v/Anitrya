@@ -1,10 +1,37 @@
-import type { FutureSourceCard } from "@/lib/integrations/future-source-contracts";
+import type {
+  FutureSourceActionKind,
+  FutureSourceCard,
+  FutureSourceId,
+  FutureSourceMetric,
+} from "@/lib/integrations/future-source-contracts";
+import type { IntegrationOnboardingCard } from "@/lib/integrations/onboarding-contracts";
 import { FutureSourceActionButton } from "@/components/settings/FutureSourceActionButton";
 import { FutureSourceChecklist } from "@/components/settings/FutureSourceChecklist";
 
 type Props = {
-  card: FutureSourceCard;
+  card: FutureSourceCard | IntegrationOnboardingCard;
 };
+
+function normalizeCard(card: FutureSourceCard | IntegrationOnboardingCard): FutureSourceCard {
+  if ("id" in card && "actionKind" in card) {
+    return card;
+  }
+
+  return {
+    id: card.source as FutureSourceId,
+    title: card.title,
+    category: card.category,
+    state: card.state,
+    summary: card.summary,
+    reasoningRole: card.reasoningRole,
+    metrics: card.metrics as FutureSourceMetric[],
+    onboardingSteps: card.onboardingSteps,
+    mappingLabel: card.mappingLabel,
+    mappingPlaceholder: card.mappingPlaceholder,
+    availabilityNote: card.availabilityNote,
+    actionKind: "provider_wiring_required" as FutureSourceActionKind,
+  };
+}
 
 function stateClasses(state: FutureSourceCard["state"]) {
   if (state === "connected") {
@@ -28,7 +55,9 @@ function categoryLabel(category: FutureSourceCard["category"]) {
   return "Market";
 }
 
-export function IntegrationConnectCard({ card }: Props) {
+export function IntegrationConnectCard({ card: rawCard }: Props) {
+  const card = normalizeCard(rawCard);
+
   return (
     <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-5">
       <div className="flex items-start justify-between gap-4">

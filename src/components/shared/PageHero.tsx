@@ -32,7 +32,7 @@ export function PageHero({
         </div>
       </div>
 
-      <ProjectBadge label={projectLabel} subtext={projectSubtext} />
+      <ProjectBadge label={projectLabel} sublabel={projectSubtext} />
     </div>
   );
 }

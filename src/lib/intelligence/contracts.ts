@@ -13,6 +13,94 @@ export type IntelligenceDataSufficiency =
   | "partial"
   | "insufficient";
 
+export type DateRangePreset =
+  | "7d"
+  | "30d"
+  | "90d"
+  | "180d"
+  | "365d"
+  | "custom";
+
+export type ResolvedDateRange = {
+  preset: DateRangePreset;
+  from: string;
+  to: string;
+  label: string;
+  days: number;
+};
+
+export type SourceKey =
+  | "ga4"
+  | "gsc"
+  | "gmb"
+  | "google_ads"
+  | "google_trends"
+  | "meta_ad_library";
+
+export type SourceConnection = {
+  source: SourceKey;
+  connected: boolean;
+  synced: boolean;
+  message: string;
+};
+
+export type DailyPoint = {
+  date: string;
+  users?: number;
+  sessions?: number;
+  engagedSessions?: number;
+  engagementRate?: number;
+  conversions?: number;
+  clicks?: number;
+  impressions?: number;
+  ctr?: number;
+  position?: number;
+};
+
+export type ProjectDataBundle = {
+  project: {
+    id?: string;
+    slug: string;
+    name: string;
+    workspaceId?: string | null;
+    ga4PropertyId?: string | null;
+    gscSiteUrl?: string | null;
+  } | null;
+  dateRange: ResolvedDateRange;
+  connections: SourceConnection[];
+  ga4Daily: DailyPoint[];
+  gscDaily: DailyPoint[];
+  gscQueries: Array<{
+    query: string;
+    page: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>;
+  gscPages: Array<{
+    page: string;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>;
+  ga4Landings: Array<{
+    page: string;
+    sessions: number;
+    users: number;
+    conversions: number;
+    engagementRate: number | null;
+  }>;
+  ga4Sources: Array<{
+    sourceMedium: string;
+    sessions: number;
+    users: number;
+    conversions: number;
+    engagementRate: number | null;
+  }>;
+};
+
 export type IntelligenceEvidenceRef = {
   table:
     | "ga4_source_daily"

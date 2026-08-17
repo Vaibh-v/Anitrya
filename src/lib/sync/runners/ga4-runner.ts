@@ -11,9 +11,7 @@ export async function runGA4Sync(input: {
   from: string;
   to: string;
 }) {
-  await getWorkspaceGoogleAccessToken(input.session, {
-    acceptedProviders: ["GOOGLE_GA4"],
-  });
+  await getWorkspaceGoogleAccessToken(input.workspaceId);
 
   return {
     source: "google_ga4",

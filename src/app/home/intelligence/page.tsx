@@ -38,7 +38,7 @@ export default async function IntelligencePage(props: PageProps) {
   const to = searchParams.to ?? defaultTo;
 
   const project = await getProjectMapping({
-    projectRef,
+    ref: projectRef,
     workspaceId,
   });
 
