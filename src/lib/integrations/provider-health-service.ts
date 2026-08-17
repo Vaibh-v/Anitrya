@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import type { IntegrationKey } from "@/lib/integrations/integration-contracts";
-import { PROVIDER_REGISTRY } from "@/lib/integrations/provider-registry";
+import {
+  getProviderCapabilityMatrix,
+  PROVIDER_REGISTRY,
+} from "@/lib/integrations/provider-registry";
 import type {
   ProviderHealthRecord,
   ProviderHealthState,
@@ -46,29 +49,33 @@ export async function buildProviderHealthSummary(
   }
 
   const records: ProviderHealthRecord[] = PROVIDER_REGISTRY.map((provider) => {
+    const capabilities = getProviderCapabilityMatrix(provider);
     const connected = tokenKeys.has(provider.key);
     const mapped = provider.requiresProjectMapping ? Boolean(projectId) : true;
-    const syncCapable = connected && provider.powersSync && mapped;
+    const syncCapable = connected && capabilities.canSync.enabled && mapped;
     const evidenceReady =
       connected &&
       mapped &&
-      provider.powersEvidence &&
+      capabilities.canExportEvidence.enabled &&
       (provider.key === "google_ga4" || provider.key === "google_gsc");
     const intelligenceReady =
-      connected && mapped && provider.powersIntelligence;
+      connected && mapped && capabilities.canPowerIntelligence.enabled;
 
     const blockers = [
       ...(provider.blockedByDefault ?? []),
+      ...Object.values(capabilities)
+        .filter((capability) => capability.state === "blocked")
+        .map((capability) => capability.reason),
       ...(provider.requiresProjectMapping && !projectId
         ? ["Project mapping is required before this provider can safely contribute."]
         : []),
       ...(provider.requiresWorkspaceToken && !connected
         ? ["Workspace connection is missing for this provider."]
         : []),
-      ...(!provider.powersSync && connected && provider.lifecycle !== "active"
+      ...(!capabilities.canSync.enabled && connected && provider.lifecycle !== "active"
         ? ["Provider is connected conceptually but sync is not yet enabled in the product."]
         : []),
-    ];
+    ].filter((blocker, index, array) => array.indexOf(blocker) === index);
 
     return {
       key: provider.key,
@@ -84,9 +91,10 @@ export async function buildProviderHealthSummary(
       syncCapable,
       evidenceReady,
       intelligenceReady,
+      capabilities,
       blockers,
       nextAction: connected
-        ? provider.powersSync
+        ? capabilities.canSync.enabled
           ? "Validate mapping and run sync to confirm normalized evidence."
           : "Keep preserved until the provider is formally activated."
         : provider.requiresWorkspaceToken

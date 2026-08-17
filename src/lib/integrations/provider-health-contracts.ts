@@ -1,4 +1,5 @@
 import type { IntegrationKey } from "@/lib/integrations/integration-contracts";
+import type { ProviderCapabilityMatrix } from "@/lib/integrations/provider-capabilities";
 
 export type ProviderHealthState = "ready" | "partial" | "blocked" | "preserved" | "missing";
 
@@ -11,6 +12,7 @@ export type ProviderHealthRecord = {
   syncCapable: boolean;
   evidenceReady: boolean;
   intelligenceReady: boolean;
+  capabilities: ProviderCapabilityMatrix;
   blockers: string[];
   nextAction: string;
   evidenceTargets: string[];
