@@ -57,7 +57,7 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
     label: "Google Ads",
     lifecycle: "preserved",
     connectionMode: "oauth",
-    capabilities: ["sync", "normalization", "reasoning_input", "competitive_context", "export_support"],
+    capabilities: ["discovery", "sync", "normalization", "reasoning_input", "competitive_context", "export_support"],
     powersSettings: true,
     powersSync: false,
     powersEvidence: false,
@@ -65,7 +65,10 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
     requiresProjectMapping: true,
     requiresWorkspaceToken: true,
     evidenceTargets: ["intelligence", "overview"],
-    blockedByDefault: ["Provider preserved in architecture but not yet wired into normalized sync."],
+    blockedByDefault: [
+      "Google Ads discovery requires server-side GOOGLE_ADS_DEVELOPER_TOKEN configuration.",
+      "Provider is preserved but not yet wired into customer mapping or normalized paid-media sync.",
+    ],
   },
   {
     key: "google_trends",
