@@ -50,6 +50,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
     lifecycle: "preserved",
     connectionMode: "oauth",
     capabilities: [
+      "discovery",
       "sync",
       "normalization",
       "reasoning_input",
@@ -59,7 +60,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
     description:
       "Paid acquisition source for campaign quality, spend efficiency, and search-term alignment.",
     settingsSummary:
-      "Preserved for the unified growth system and future paid-media interpretation.",
+      "OAuth discovery is prepared, but server-side developer-token configuration and account mapping are required before sync.",
     evidenceRole:
       "Will provide spend-to-outcome and campaign-quality context.",
   },
