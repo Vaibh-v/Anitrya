@@ -12,6 +12,12 @@ const GOOGLE_WORKSPACE_PROVIDERS: IntegrationProvider[] = [
   IntegrationProvider.GOOGLE_GSC,
 ];
 
+const NEXTAUTH_SECRET =
+  process.env.NEXTAUTH_SECRET ||
+  process.env.AUTH_SECRET ||
+  process.env.APP_SECRET ||
+  process.env.GOOGLE_CLIENT_SECRET;
+
 function mergeScopes(existing: string | null | undefined, next: string | null | undefined) {
   const scopes = new Set(
     [existing, next]
@@ -26,6 +32,7 @@ function mergeScopes(existing: string | null | undefined, next: string | null | 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
+  secret: NEXTAUTH_SECRET,
   providers: authProviders,
   callbacks: {
     async signIn({ user, account }) {
