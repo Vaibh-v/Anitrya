@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import type { IntegrationKey } from "@/lib/integrations/integration-contracts";
+import { GOOGLE_ADS_DEVELOPER_TOKEN_ENV } from "@/lib/integrations/google/ads/discovery-contract";
+import { GOOGLE_BUSINESS_PROFILE_SCOPE } from "@/lib/integrations/google/gbp/discovery-contract";
+import {
+  GOOGLE_ADS_SCOPE,
+  GOOGLE_ANALYTICS_SCOPE,
+  GOOGLE_SEARCH_CONSOLE_SCOPE,
+} from "@/lib/auth.config";
 import {
   getProviderCapabilityMatrix,
   PROVIDER_REGISTRY,
@@ -16,6 +23,66 @@ const PROVIDER_TOKEN_MAP: Record<string, IntegrationKey | undefined> = {
   GOOGLE_ADS: "google_ads",
   GOOGLE_GBP: "google_business_profile",
 };
+
+const PROVIDER_REQUIRED_SCOPES: Partial<Record<IntegrationKey, string[]>> = {
+  google_ga4: [GOOGLE_ANALYTICS_SCOPE],
+  google_gsc: [GOOGLE_SEARCH_CONSOLE_SCOPE],
+  google_ads: [GOOGLE_ADS_SCOPE],
+  google_business_profile: [GOOGLE_BUSINESS_PROFILE_SCOPE],
+};
+
+type WorkspaceTokenSummary = {
+  provider: string;
+  scope: string | null;
+  updatedAt: Date;
+};
+
+function parseScopes(scope: string | null | undefined) {
+  return new Set(
+    (scope ?? "")
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+}
+
+function tokenHasRequiredScopes(
+  token: WorkspaceTokenSummary,
+  requiredScopes: string[]
+) {
+  if (requiredScopes.length === 0) return true;
+
+  const tokenScopes = parseScopes(token.scope);
+  return requiredScopes.every((scope) => tokenScopes.has(scope));
+}
+
+function hasProviderConnection(input: {
+  providerKey: IntegrationKey;
+  tokens: WorkspaceTokenSummary[];
+  tokenKeys: Set<IntegrationKey>;
+}) {
+  if (input.tokenKeys.has(input.providerKey)) return true;
+
+  const requiredScopes = PROVIDER_REQUIRED_SCOPES[input.providerKey] ?? [];
+  if (requiredScopes.length === 0) return false;
+
+  return input.tokens.some((token) =>
+    tokenHasRequiredScopes(token, requiredScopes)
+  );
+}
+
+function providerSpecificBlockers(providerKey: IntegrationKey) {
+  if (
+    providerKey === "google_ads" &&
+    !process.env[GOOGLE_ADS_DEVELOPER_TOKEN_ENV]
+  ) {
+    return [
+      "GOOGLE_ADS_DEVELOPER_TOKEN is missing on the server, so Google Ads customer discovery cannot run yet.",
+    ];
+  }
+
+  return [];
+}
 
 function deriveState(input: {
   connected: boolean;
@@ -38,6 +105,7 @@ export async function buildProviderHealthSummary(
     where: { workspaceId },
     select: {
       provider: true,
+      scope: true,
       updatedAt: true,
     },
   });
@@ -50,7 +118,11 @@ export async function buildProviderHealthSummary(
 
   const records: ProviderHealthRecord[] = PROVIDER_REGISTRY.map((provider) => {
     const capabilities = getProviderCapabilityMatrix(provider);
-    const connected = tokenKeys.has(provider.key);
+    const connected = hasProviderConnection({
+      providerKey: provider.key,
+      tokens,
+      tokenKeys,
+    });
     const mapped = provider.requiresProjectMapping ? Boolean(projectId) : true;
     const syncCapable = connected && capabilities.canSync.enabled && mapped;
     const evidenceReady =
@@ -63,6 +135,7 @@ export async function buildProviderHealthSummary(
 
     const blockers = [
       ...(provider.blockedByDefault ?? []),
+      ...providerSpecificBlockers(provider.key),
       ...Object.values(capabilities)
         .filter((capability) => capability.state === "blocked")
         .map((capability) => capability.reason),
