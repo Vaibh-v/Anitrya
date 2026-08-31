@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import type { PublicMarketEvidenceBundle } from "@/lib/intelligence/public-market-evidence/contracts";
+import { getPublicMarketEvidenceBundle } from "@/lib/intelligence/public-market-evidence/repository";
 
 export type Ga4SourceDailyRow = {
   date: string;
@@ -43,6 +45,7 @@ export type ProjectEvidenceBundle = {
   ga4LandingPageDaily: Ga4LandingPageDailyRow[];
   gscQueryDaily: GscQueryDailyRow[];
   gscPageDaily: GscPageDailyRow[];
+  publicMarketEvidence: PublicMarketEvidenceBundle;
 };
 
 function escapeSql(value: string): string {
@@ -129,5 +132,10 @@ export async function getProjectEvidenceBundle(input: {
     ga4LandingPageDaily,
     gscQueryDaily,
     gscPageDaily,
+    publicMarketEvidence: await getPublicMarketEvidenceBundle({
+      projectLabel: projectSlug,
+      projectSlug,
+      limit: 5,
+    }),
   };
 }

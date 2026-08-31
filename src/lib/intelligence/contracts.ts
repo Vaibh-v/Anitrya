@@ -3,6 +3,7 @@ export type IntelligenceCategory =
   | "query_opportunity"
   | "page_opportunity"
   | "source_concentration"
+  | "market_context"
   | "data_gap"
   | "other";
 
@@ -106,11 +107,16 @@ export type IntelligenceEvidenceRef = {
     | "ga4_source_daily"
     | "ga4_landing_page_daily"
     | "gsc_query_daily"
-    | "gsc_page_daily";
+    | "gsc_page_daily"
+    | "public_market_evidence";
   from: string;
   to: string;
   filters?: Record<string, string>;
   metrics?: Record<string, number>;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  evidenceClass?: string;
+  claim?: string;
 };
 
 export type IntelligenceInsight = {
