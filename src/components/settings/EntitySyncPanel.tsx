@@ -122,9 +122,9 @@ export function EntitySyncPanel({
 
       const results = payload.results ?? [];
       const message =
-        payload.details ||
-        payload.error ||
         payload.summary ||
+        payload.error ||
+        payload.details ||
         (results.length > 0 ? buildSummaryFromResults(results) : null) ||
         (response.ok ? "Sync completed." : "Sync failed.");
 
