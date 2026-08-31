@@ -15,6 +15,55 @@ function asString(value: unknown): string | null {
 
 type SyncResult = IntegrationSyncResult;
 
+type OwnerSheetResult =
+  | {
+      status: "mirrored";
+      masterSpreadsheetId: string;
+      customerSpreadsheetId: string;
+      summary: string;
+    }
+  | {
+      status: "skipped";
+      reason: string;
+      summary: string;
+    }
+  | {
+      status: "error";
+      reason: string;
+      summary: string;
+    };
+
+type IntelligenceResultSummary =
+  | {
+      status: "generated";
+      insights: number;
+      recommendations: number;
+      exportStatus: "mirrored" | "skipped" | "error";
+      masterSpreadsheetId?: string;
+      customerSpreadsheetId?: string;
+      exportError?: string;
+    }
+  | {
+      status: "error";
+      error: string;
+    };
+
+function hasOwnerSheetServiceAccountConfig() {
+  const clientEmail =
+    process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL ||
+    process.env.GOOGLE_CLIENT_EMAIL;
+  const privateKey =
+    process.env.GOOGLE_SHEETS_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY;
+
+  return Boolean(clientEmail?.trim() && privateKey?.trim());
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : fallback;
+}
+
 export async function POST(req: NextRequest) {
   const results: SyncResult[] = [];
 
@@ -67,93 +116,120 @@ export async function POST(req: NextRequest) {
       })),
     );
 
-    let ownerSheetMessage = "";
-    let intelligenceSummaryMessage = "";
-    let intelligenceResultSummary: {
-      insights: number;
-      recommendations: number;
-      masterSpreadsheetId: string;
-      customerSpreadsheetId: string;
-    } | null = null;
+    let ownerSheet: OwnerSheetResult = {
+      status: "skipped",
+      reason:
+        "GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL and GOOGLE_SHEETS_PRIVATE_KEY are not configured.",
+      summary:
+        "OWNER_SHEET: skipped - service-account credentials are not configured.",
+    };
 
-    try {
-      const ownerExport = await exportNormalizedProjectDataToOwnerSheet({
-        workspaceId: mapping.workspaceId,
-        projectId: mapping.projectId,
-        projectSlug: mapping.projectSlug,
-        projectLabel: mapping.projectLabel,
-        ga4PropertyRecordId: mapping.ga4PropertyRecordId,
-        ga4PropertyId: mapping.ga4PropertyId,
-        ga4PropertyLabel: mapping.ga4PropertyLabel,
-        gscSiteRecordId: mapping.gscSiteRecordId,
-        gscSiteUrl: mapping.gscSiteUrl,
-        from,
-        to,
-        results,
-      });
-
-      ownerSheetMessage = ` · OWNER_SHEET: mirrored to ${ownerExport.customerSheetId}`;
-
+    if (hasOwnerSheetServiceAccountConfig()) {
       try {
-        const intelligenceResult = await runIntelligence({
+        const ownerExport = await exportNormalizedProjectDataToOwnerSheet({
           workspaceId: mapping.workspaceId,
           projectId: mapping.projectId,
           projectSlug: mapping.projectSlug,
           projectLabel: mapping.projectLabel,
+          ga4PropertyRecordId: mapping.ga4PropertyRecordId,
+          ga4PropertyId: mapping.ga4PropertyId,
+          ga4PropertyLabel: mapping.ga4PropertyLabel,
+          gscSiteRecordId: mapping.gscSiteRecordId,
+          gscSiteUrl: mapping.gscSiteUrl,
           from,
           to,
-        });
-
-        const intelligenceExport = await exportIntelligenceToSheets({
-          run: {
-            workspaceId: mapping.workspaceId,
-            projectId: mapping.projectId,
-            projectSlug: mapping.projectSlug,
-            projectLabel: mapping.projectLabel,
-            from,
-            to,
-          },
-          output: intelligenceResult,
-        });
-
-        intelligenceResultSummary = {
-          insights: intelligenceResult.insights.length,
-          recommendations: intelligenceResult.recommendations.length,
-          masterSpreadsheetId: intelligenceExport.masterSpreadsheetId,
-          customerSpreadsheetId: intelligenceExport.customerSpreadsheetId,
-        };
-
-        intelligenceSummaryMessage = ` · INTELLIGENCE: ${intelligenceResult.insights.length} insight(s) · ${intelligenceResult.recommendations.length} recommendation(s)`;
-      } catch (intelligenceError) {
-        console.error("Intelligence failed after sync:", intelligenceError);
-        intelligenceSummaryMessage = " · INTELLIGENCE: failed";
-      }
-    } catch (ownerExportError) {
-      console.error("OWNER EXPORT FAILED:", ownerExportError);
-      console.error(
-        "OWNER EXPORT STACK:",
-        ownerExportError instanceof Error
-          ? ownerExportError.stack
-          : String(ownerExportError),
-      );
-
-      const details =
-        ownerExportError instanceof Error
-          ? `${ownerExportError.message}\n${ownerExportError.stack ?? ""}`
-          : String(ownerExportError);
-
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Owner-sheet export failed.",
-          details,
           results,
-        },
-        { status: 500 },
-      );
+        });
+
+        ownerSheet = {
+          status: "mirrored",
+          masterSpreadsheetId: ownerExport.masterSpreadsheetId,
+          customerSpreadsheetId: ownerExport.customerSheetId,
+          summary: `OWNER_SHEET: mirrored to ${ownerExport.customerSheetId}`,
+        };
+      } catch (ownerExportError) {
+        console.error("OWNER_EXPORT_FAILED", ownerExportError);
+        const reason = getErrorMessage(
+          ownerExportError,
+          "Owner-sheet export failed after sync.",
+        );
+
+        ownerSheet = {
+          status: "error",
+          reason,
+          summary: `OWNER_SHEET: failed - ${reason}`,
+        };
+      }
     }
 
-    const ok = results.every((result) => result.status !== "error");
+    let intelligence: IntelligenceResultSummary | null = null;
+
+    try {
+      const intelligenceResult = await runIntelligence({
+        workspaceId: mapping.workspaceId,
+        projectId: mapping.projectId,
+        projectSlug: mapping.projectSlug,
+        projectLabel: mapping.projectLabel,
+        from,
+        to,
+      });
+
+      intelligence = {
+        status: "generated",
+        insights: intelligenceResult.insights.length,
+        recommendations: intelligenceResult.recommendations.length,
+        exportStatus: "skipped",
+      };
+
+      if (hasOwnerSheetServiceAccountConfig()) {
+        try {
+          const intelligenceExport = await exportIntelligenceToSheets({
+            run: {
+              workspaceId: mapping.workspaceId,
+              projectId: mapping.projectId,
+              projectSlug: mapping.projectSlug,
+              projectLabel: mapping.projectLabel,
+              from,
+              to,
+            },
+            output: intelligenceResult,
+          });
+
+          intelligence = {
+            ...intelligence,
+            exportStatus: "mirrored",
+            masterSpreadsheetId: intelligenceExport.masterSpreadsheetId,
+            customerSpreadsheetId: intelligenceExport.customerSpreadsheetId,
+          };
+        } catch (intelligenceExportError) {
+          console.error("INTELLIGENCE_EXPORT_FAILED", intelligenceExportError);
+          intelligence = {
+            ...intelligence,
+            exportStatus: "error",
+            exportError: getErrorMessage(
+              intelligenceExportError,
+              "Intelligence export failed.",
+            ),
+          };
+        }
+      }
+    } catch (intelligenceError) {
+      console.error("INTELLIGENCE_GENERATION_FAILED", intelligenceError);
+      intelligence = {
+        status: "error",
+        error: getErrorMessage(intelligenceError, "Intelligence failed."),
+      };
+    }
+
+    const syncOk = results.every((result) => result.status !== "error");
+    const ok = syncOk && ownerSheet.status !== "error";
+
+    const intelligenceSummary =
+      intelligence?.status === "generated"
+        ? `INTELLIGENCE: ${intelligence.insights} insight(s) · ${intelligence.recommendations} recommendation(s) · EXPORT: ${intelligence.exportStatus}`
+        : intelligence?.status === "error"
+          ? `INTELLIGENCE: failed - ${intelligence.error}`
+          : "INTELLIGENCE: not run";
 
     return NextResponse.json(
       {
@@ -164,7 +240,8 @@ export async function POST(req: NextRequest) {
           label: mapping.projectLabel,
         },
         results,
-        intelligence: intelligenceResultSummary,
+        ownerSheet,
+        intelligence,
         summary:
           results
             .map(
@@ -174,8 +251,8 @@ export async function POST(req: NextRequest) {
                 }`,
             )
             .join(" · ") +
-          ownerSheetMessage +
-          intelligenceSummaryMessage,
+          ` · ${ownerSheet.summary}` +
+          ` · ${intelligenceSummary}`,
       },
       { status: ok ? 200 : 207 },
     );
