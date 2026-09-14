@@ -12,6 +12,7 @@ import type {
   GscQueryDailyRow,
   Ga4SourceDailyRow,
 } from "@/lib/intelligence/project-evidence";
+import type { PublicMarketEvidenceCard } from "@/lib/intelligence/public-market-evidence/contracts";
 
 function makeId(prefix: string, value: string) {
   return `${prefix}_${crypto
@@ -409,6 +410,120 @@ function buildDataGapInsight(args: {
   return { insight, recommendation };
 }
 
+function buildMarketContextInsight(args: {
+  input: IntelligenceProviderContext["input"];
+  generatedAt: string;
+  publicCards: PublicMarketEvidenceCard[];
+  totalGa4Sessions: number;
+  totalGscImpressions: number;
+}): {
+  insight: IntelligenceInsight;
+  recommendation: IntelligenceRecommendation;
+} {
+  const {
+    input,
+    generatedAt,
+    publicCards,
+    totalGa4Sessions,
+    totalGscImpressions,
+  } = args;
+
+  const runKey = buildRunKey(input);
+  const strongestCards = publicCards.slice(0, 3);
+  const confidenceAverage = average(strongestCards.map((card) => card.confidence));
+  const privateEvidenceScore =
+    totalGa4Sessions > 0 && totalGscImpressions > 0
+      ? 24
+      : totalGa4Sessions > 0 || totalGscImpressions > 0
+        ? 12
+        : 0;
+  const priorityScore = clamp(
+    round(confidenceAverage * 55 + privateEvidenceScore + strongestCards.length * 5, 1),
+    0,
+    100,
+  );
+  const priority = priorityFromScore(priorityScore);
+  const sourceTitles = strongestCards
+    .map((card) => `${card.topic} (${card.year})`)
+    .join(", ");
+  const evidenceSummary = `Public market context attached: ${sourceTitles}. Private window: ${formatNumber(
+    totalGa4Sessions,
+  )} sessions and ${formatNumber(totalGscImpressions)} search impressions.`;
+
+  const insightId = makeId(
+    "insight",
+    `${runKey}:market_context:${strongestCards
+      .map((card) => card.evidenceId)
+      .join("|")}`,
+  );
+
+  const insight: IntelligenceInsight = {
+    insightId,
+    runKey,
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    projectSlug: input.projectSlug,
+    projectLabel: input.projectLabel,
+    analysisWindowFrom: input.from,
+    analysisWindowTo: input.to,
+    category: "market_context",
+    severity: priority === 1 ? "high" : "medium",
+    hypothesisRank: 3,
+    priorityScore,
+    impactEstimatedClicks: 0,
+    evidenceSummary,
+    missingDataReason: "",
+    title: "Public market evidence is available for stronger interpretation",
+    finding:
+      "The current private evidence window can be interpreted against external market, benchmark, and campaign-context records instead of being judged in isolation.",
+    rationale:
+      "Public evidence does not replace synced business data, but it improves diagnosis by adding context about expected channel behavior, market demand, local trust, paid efficiency, and customer-experience patterns.",
+    evidence: strongestCards.map((card) => ({
+      table: "public_market_evidence" as const,
+      from: `${card.year}-01-01`,
+      to: `${card.year}-12-31`,
+      filters: {
+        industry: card.industry,
+        topic: card.topic,
+        region: card.region,
+      },
+      sourceTitle: card.sourceId,
+      sourceUrl: card.sourceUrl,
+      evidenceClass: card.evidenceClass,
+      claim: card.claim,
+    })),
+    recommendedAction:
+      "Use the attached public evidence as comparison context when ranking the next private-data recommendation, then add the actual report PDF or Drive evidence card before promoting this to a customer-facing conclusion.",
+    dataSufficiency: "partial",
+    missingData: [],
+    modelProvider: "rule_based",
+    modelVersion: "v3",
+    generatedAt,
+  };
+
+  const recommendation: IntelligenceRecommendation = {
+    recommendationId: makeId("rec", `${insightId}:1`),
+    runKey,
+    insightId,
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    projectSlug: input.projectSlug,
+    priority,
+    priorityScore,
+    title: "Attach public market context before final diagnosis",
+    action:
+      "Compare the strongest private GA4/GSC finding against relevant public evidence cards, then state what is observed, what is benchmarked, and what remains inferred.",
+    expectedOutcome:
+      "A more tailored recommendation that separates internal execution issues from broader market, trust, channel, or seasonality context.",
+    evidenceSummary,
+    impactEstimatedClicks: 0,
+    evidence: insight.evidence,
+    generatedAt,
+  };
+
+  return { insight, recommendation };
+}
+
 export class RuleBasedIntelligenceProvider implements IntelligenceProvider {
   readonly name = "rule_based" as const;
   readonly modelVersion = "v3";
@@ -490,6 +605,18 @@ export class RuleBasedIntelligenceProvider implements IntelligenceProvider {
         input,
         generatedAt,
         topQueries,
+      });
+      insights.push(result.insight);
+      recommendations.push(result.recommendation);
+    }
+
+    if (evidence.publicMarketEvidence.cards.length > 0) {
+      const result = buildMarketContextInsight({
+        input,
+        generatedAt,
+        publicCards: evidence.publicMarketEvidence.cards,
+        totalGa4Sessions,
+        totalGscImpressions,
       });
       insights.push(result.insight);
       recommendations.push(result.recommendation);
