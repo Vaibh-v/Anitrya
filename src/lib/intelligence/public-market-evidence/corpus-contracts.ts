@@ -43,6 +43,15 @@ export type PublicEvidenceCorpusEntry = {
   };
 };
 
+export type PublicEvidenceCorpusManifest = {
+  corpusId: string;
+  name: string;
+  version: string;
+  generatedAt?: string;
+  documents: PublicEvidenceCorpusDocument[];
+  entries: PublicEvidenceCorpusEntry[];
+};
+
 export type PublicEvidenceCorpusCompileWarning = {
   entryId: string;
   reason: string;
@@ -51,4 +60,10 @@ export type PublicEvidenceCorpusCompileWarning = {
 export type PublicEvidenceCorpusCompileResult = {
   warnings: PublicEvidenceCorpusCompileWarning[];
   skippedEntries: number;
+};
+
+export type PublicEvidenceCorpusCompiled = {
+  sources: import("@/lib/intelligence/public-market-evidence/contracts").PublicMarketEvidenceSource[];
+  cards: import("@/lib/intelligence/public-market-evidence/contracts").PublicMarketEvidenceCard[];
+  result: PublicEvidenceCorpusCompileResult;
 };

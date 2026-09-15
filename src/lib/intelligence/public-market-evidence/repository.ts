@@ -1,8 +1,10 @@
 import type {
   PublicMarketEvidenceBundle,
   PublicMarketEvidenceCard,
+  PublicMarketEvidenceSource,
   PublicMarketEvidenceQuery,
 } from "@/lib/intelligence/public-market-evidence/contracts";
+import type { PublicEvidenceCorpusCompiled } from "@/lib/intelligence/public-market-evidence/corpus-contracts";
 import {
   PUBLIC_MARKET_EVIDENCE_CARDS,
   PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT,
@@ -48,43 +50,85 @@ function scoreCard(card: PublicMarketEvidenceCard, query: PublicMarketEvidenceQu
   return score;
 }
 
-function buildCoverage(cards: PublicMarketEvidenceCard[]) {
+function buildCoverage(input: {
+  matchedCards: PublicMarketEvidenceCard[];
+  totalCards: number;
+  skippedEntries: number;
+  warnings: string[];
+}) {
+  const { matchedCards, totalCards, skippedEntries, warnings } = input;
   const confidenceAverage =
-    cards.length > 0
-      ? cards.reduce((total, card) => total + card.confidence, 0) / cards.length
+    matchedCards.length > 0
+      ? matchedCards.reduce((total, card) => total + card.confidence, 0) /
+        matchedCards.length
       : 0;
 
   return {
-    totalCards: PUBLIC_MARKET_EVIDENCE_CARDS.length,
-    matchedCards: cards.length,
-    industries: [...new Set(cards.map((card) => card.industry))],
-    topics: [...new Set(cards.map((card) => card.topic))],
+    totalCards,
+    matchedCards: matchedCards.length,
+    industries: [...new Set(matchedCards.map((card) => card.industry))],
+    topics: [...new Set(matchedCards.map((card) => card.topic))],
     confidenceAverage: Math.round(confidenceAverage * 100) / 100,
-    skippedEntries: PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT.skippedEntries,
-    warnings: PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT.warnings.map(
-      (warning) => `${warning.entryId}: ${warning.reason}`,
-    ),
+    skippedEntries,
+    warnings,
   };
 }
 
-export async function getPublicMarketEvidenceBundle(
-  query: PublicMarketEvidenceQuery,
-): Promise<PublicMarketEvidenceBundle> {
+function buildBundleFromCards(input: {
+  query: PublicMarketEvidenceQuery;
+  cards: PublicMarketEvidenceCard[];
+  sources: PublicMarketEvidenceSource[];
+  skippedEntries: number;
+  warnings: string[];
+}): PublicMarketEvidenceBundle {
+  const { query, cards, sources, skippedEntries, warnings } = input;
   const limit = Math.max(1, Math.min(query.limit ?? 5, 12));
-  const rankedCards = [...PUBLIC_MARKET_EVIDENCE_CARDS]
+  const rankedCards = [...cards]
     .map((card) => ({ card, score: scoreCard(card, query) }))
     .sort((a, b) => b.score - a.score || b.card.confidence - a.card.confidence)
     .slice(0, limit)
     .map((entry) => entry.card);
 
   const sourceIds = new Set(rankedCards.map((card) => card.sourceId));
-  const sources = PUBLIC_MARKET_EVIDENCE_SOURCES.filter((source) =>
-    sourceIds.has(source.sourceId),
-  );
+  const rankedSources = sources.filter((source) => sourceIds.has(source.sourceId));
 
   return {
-    sources,
+    sources: rankedSources,
     cards: rankedCards,
-    coverage: buildCoverage(rankedCards),
+    coverage: buildCoverage({
+      matchedCards: rankedCards,
+      totalCards: cards.length,
+      skippedEntries,
+      warnings,
+    }),
   };
+}
+
+export async function getPublicMarketEvidenceBundle(
+  query: PublicMarketEvidenceQuery,
+): Promise<PublicMarketEvidenceBundle> {
+  return buildBundleFromCards({
+    query,
+    cards: PUBLIC_MARKET_EVIDENCE_CARDS,
+    sources: PUBLIC_MARKET_EVIDENCE_SOURCES,
+    skippedEntries: PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT.skippedEntries,
+    warnings: PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT.warnings.map(
+      (warning) => `${warning.entryId}: ${warning.reason}`,
+    ),
+  });
+}
+
+export async function getPublicMarketEvidenceBundleFromCorpus(input: {
+  query: PublicMarketEvidenceQuery;
+  corpus: PublicEvidenceCorpusCompiled;
+}): Promise<PublicMarketEvidenceBundle> {
+  return buildBundleFromCards({
+    query: input.query,
+    cards: input.corpus.cards,
+    sources: input.corpus.sources,
+    skippedEntries: input.corpus.result.skippedEntries,
+    warnings: input.corpus.result.warnings.map(
+      (warning) => `${warning.entryId}: ${warning.reason}`,
+    ),
+  });
 }
