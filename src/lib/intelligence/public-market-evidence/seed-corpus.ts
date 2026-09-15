@@ -60,7 +60,7 @@ export const PUBLIC_EVIDENCE_CORPUS_DOCUMENTS: PublicEvidenceCorpusDocument[] = 
     title: "Google Ads Benchmarks 2024",
     publisher: "WordStream",
     sourceKind: "benchmark_report",
-    publicatioméear: 2024,
+    publicationYear: 2024,
     sourceUrl:
       "https://www.wordstream.com/resources/search-advertising-benchmarks-for-2024-competitive-data-insights",
     accessMode: "gated",
@@ -77,7 +77,7 @@ export const PUBLIC_EVIDENCE_CORPUS_DOCUMENTS: PublicEvidenceCorpusDocument[] = 
     title: "Digital 2024 Global Overview Report",
     publisher: "DataReportal",
     sourceKind: "industry_report",
-    publicatioméear: 2024,
+    publicationYear: 2024,
     sourceUrl: "https://datareportal.com/reports/digital-2024-global-overview-report",
     accessMode: "open",
     reliability: "medium",
