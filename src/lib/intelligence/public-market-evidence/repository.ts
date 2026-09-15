@@ -5,6 +5,7 @@ import type {
 } from "@/lib/intelligence/public-market-evidence/contracts";
 import {
   PUBLIC_MARKET_EVIDENCE_CARDS,
+  PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT,
   PUBLIC_MARKET_EVIDENCE_SOURCES,
 } from "@/lib/intelligence/public-market-evidence/source-catalog";
 
@@ -59,6 +60,10 @@ function buildCoverage(cards: PublicMarketEvidenceCard[]) {
     industries: [...new Set(cards.map((card) => card.industry))],
     topics: [...new Set(cards.map((card) => card.topic))],
     confidenceAverage: Math.round(confidenceAverage * 100) / 100,
+    skippedEntries: PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT.skippedEntries,
+    warnings: PUBLIC_MARKET_EVIDENCE_COMPILE_RESULT.warnings.map(
+      (warning) => `${warning.entryId}: ${warning.reason}`,
+    ),
   };
 }
 
