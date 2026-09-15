@@ -3,9 +3,11 @@ import type {
   PublicMarketEvidenceSource,
 } from "@/lib/intelligence/public-market-evidence/contracts";
 import type {
+  PublicEvidenceCorpusCompiled,
   PublicEvidenceCorpusCompileResult,
   PublicEvidenceCorpusDocument,
   PublicEvidenceCorpusEntry,
+  PublicEvidenceCorpusManifest,
 } from "@/lib/intelligence/public-market-evidence/corpus-contracts";
 
 function clampConfidence(value: number) {
@@ -78,5 +80,20 @@ export function compilePublicEvidenceCards(input: {
       warnings,
       skippedEntries: warnings.length,
     },
+  };
+}
+
+export function compilePublicEvidenceCorpus(
+  manifest: PublicEvidenceCorpusManifest,
+): PublicEvidenceCorpusCompiled {
+  const { cards, result } = compilePublicEvidenceCards({
+    documents: manifest.documents,
+    entries: manifest.entries,
+  });
+
+  return {
+    sources: compilePublicEvidenceSources(manifest.documents),
+    cards,
+    result,
   };
 }
