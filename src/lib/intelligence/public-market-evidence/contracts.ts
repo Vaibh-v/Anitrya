@@ -39,6 +39,9 @@ export type PublicMarketEvidenceSource = {
 export type PublicMarketEvidenceCard = {
   evidenceId: string;
   sourceId: string;
+  sourceTitle: string;
+  sourcePublisher: string;
+  sourceReliability: "low" | "medium" | "high";
   industry: string;
   subIndustry?: string;
   region: string;
@@ -70,5 +73,7 @@ export type PublicMarketEvidenceBundle = {
     industries: string[];
     topics: string[];
     confidenceAverage: number;
+    skippedEntries: number;
+    warnings: string[];
   };
 };
