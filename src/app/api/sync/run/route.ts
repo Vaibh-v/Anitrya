@@ -6,6 +6,7 @@ import { runProjectIntegrationSyncs } from "@/lib/integrations/run-project-integ
 import { exportNormalizedProjectDataToOwnerSheet } from "@/lib/intelligence/owner-network/export-normalized-project-data";
 import { runIntelligence } from "@/lib/intelligence/run-intelligence";
 import { exportIntelligenceToSheets } from "@/lib/intelligence/owner-network/export-intelligence-to-sheets";
+import { recordSyncHealthRun } from "@/lib/sync/sync-health-history";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -259,6 +260,31 @@ export async function POST(req: NextRequest) {
           ? `INTELLIGENCE: failed - ${intelligence.error}`
           : "INTELLIGENCE: not run";
 
+    const summary =
+      results
+        .map(
+          (item) =>
+            `${item.provider}: ${item.status} (${item.rowsSynced})${
+              item.reason ? ` - ${item.reason}` : ""
+            }`,
+        )
+        .join(" · ") +
+      ` · ${ownerSheet.summary}` +
+      ` · ${intelligenceSummary}`;
+
+    const syncHealthRunId = await recordSyncHealthRun({
+      workspaceId: mapping.workspaceId,
+      projectId: mapping.projectId,
+      projectSlug: mapping.projectSlug,
+      projectLabel: mapping.projectLabel,
+      from,
+      to,
+      sources: results,
+      ownerSheet,
+      intelligence,
+      summary,
+    });
+
     return NextResponse.json(
       {
         ok,
@@ -270,17 +296,8 @@ export async function POST(req: NextRequest) {
         results,
         ownerSheet,
         intelligence,
-        summary:
-          results
-            .map(
-              (item) =>
-                `${item.provider}: ${item.status} (${item.rowsSynced})${
-                  item.reason ? ` - ${item.reason}` : ""
-                }`,
-            )
-            .join(" · ") +
-          ` · ${ownerSheet.summary}` +
-          ` · ${intelligenceSummary}`,
+        syncHealthRunId,
+        summary,
       },
       { status: ok ? 200 : 207 },
     );
