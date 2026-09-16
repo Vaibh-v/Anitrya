@@ -161,30 +161,35 @@ export async function listSyncHealthRuns(input: {
   projectSlug: string;
   take?: number;
 }): Promise<SyncHealthRunView[]> {
-  const runs = await prisma.syncHealthRun.findMany({
-    where: {
-      workspaceId: input.workspaceId,
-      projectSlug: input.projectSlug,
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    take: input.take ?? 6,
-  });
+  try {
+    const runs = await prisma.syncHealthRun.findMany({
+      where: {
+        workspaceId: input.workspaceId,
+        projectSlug: input.projectSlug,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: input.take ?? 6,
+    });
 
-  return runs.map((run) => ({
-    id: run.id,
-    state: run.state as SyncHealthState,
-    projectSlug: run.projectSlug,
-    projectLabel: run.projectLabel,
-    from: run.from,
-    to: run.to,
-    sources: asRecordArray(run.sources),
-    ownerSheet: run.ownerSheet as SyncHealthOwnerSheet | null,
-    intelligence: run.intelligence as SyncHealthIntelligence | null,
-    nextActions: asStringArray(run.nextActions),
-    totalRowsSynced: run.totalRowsSynced,
-    summary: run.summary,
-    createdAt: run.createdAt,
-  }));
+    return runs.map((run) => ({
+      id: run.id,
+      state: run.state as SyncHealthState,
+      projectSlug: run.projectSlug,
+      projectLabel: run.projectLabel,
+      from: run.from,
+      to: run.to,
+      sources: asRecordArray(run.sources),
+      ownerSheet: run.ownerSheet as SyncHealthOwnerSheet | null,
+      intelligence: run.intelligence as SyncHealthIntelligence | null,
+      nextActions: asStringArray(run.nextActions),
+      totalRowsSynced: run.totalRowsSynced,
+      summary: run.summary,
+      createdAt: run.createdAt,
+    }));
+  } catch (error) {
+    console.error("SYNC_HEALTH_RUN_LIST_FAILED", error);
+    return [];
+  }
 }
