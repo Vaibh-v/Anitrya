@@ -15,6 +15,25 @@ type SyncPayload = {
   details?: string;
   summary?: string;
   results?: SyncResult[];
+  ownerSheet?: {
+    status?: "mirrored" | "skipped" | "error";
+    reason?: string;
+    summary?: string;
+    label?: string;
+    detail?: string;
+    missingEnv?: string[];
+    actionRequired?: string[];
+    masterSpreadsheetId?: string;
+    customerSpreadsheetId?: string;
+  };
+  intelligence?: {
+    status?: "generated" | "error";
+    insights?: number;
+    recommendations?: number;
+    exportStatus?: "mirrored" | "skipped" | "error";
+    exportError?: string;
+    customerSpreadsheetId?: string;
+  };
 };
 
 export type EntitySyncPanelProps = {
@@ -26,8 +45,8 @@ export type EntitySyncPanelProps = {
 
 type PanelState =
   | { status: "idle"; message: string }
-  | { status: "success"; message: string }
-  | { status: "error"; message: string };
+  | { status: "success"; message: string; payload?: SyncPayload }
+  | { status: "error"; message: string; payload?: SyncPayload };
 
 function normalizeDateInput(value: string) {
   if (!value) return "";
@@ -138,6 +157,7 @@ export function EntitySyncPanel({
             ? "error"
             : "success",
         message,
+        payload,
       });
     } catch (error) {
       setState({
@@ -246,6 +266,93 @@ export function EntitySyncPanel({
       >
         {state.message}
       </div>
+
+      {state.status !== "idle" && state.payload ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-[22px] border border-white/10 bg-black/10 px-5 py-5">
+            <div className="text-[12px] uppercase tracking-[0.24em] text-white/48">
+              Source sync
+            </div>
+            <div className="mt-4 space-y-3">
+              {(state.payload.results ?? []).map((result) => (
+                <div key={result.provider} className="text-[15px] leading-6 text-white/72">
+                  <span className="font-semibold text-white/90">
+                    {result.provider}
+                  </span>
+                  {": "}
+                  {result.status}
+                  {typeof result.rowsSynced === "number"
+                    ? ` (${result.rowsSynced})`
+                    : ""}
+                  {result.reason ? ` - ${result.reason}` : ""}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[22px] border border-white/10 bg-black/10 px-5 py-5">
+            <div className="text-[12px] uppercase tracking-[0.24em] text-white/48">
+              Owner export
+            </div>
+            <div className="mt-4 text-[17px] font-semibold text-white">
+              {state.payload.ownerSheet?.label ??
+                state.payload.ownerSheet?.status ??
+                "Not reported"}
+            </div>
+            <div className="mt-3 text-[15px] leading-7 text-white/68">
+              {state.payload.ownerSheet?.detail ??
+                state.payload.ownerSheet?.reason ??
+                "No owner export detail returned."}
+            </div>
+            {state.payload.ownerSheet?.missingEnv?.length ? (
+              <div className="mt-4 text-[13px] leading-6 text-amber-100/90">
+                Missing: {state.payload.ownerSheet.missingEnv.join(", ")}
+              </div>
+            ) : null}
+            {state.payload.ownerSheet?.customerSpreadsheetId ? (
+              <div className="mt-4 text-[13px] leading-6 text-emerald-100/90">
+                Customer sheet: {state.payload.ownerSheet.customerSpreadsheetId}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-[22px] border border-white/10 bg-black/10 px-5 py-5">
+            <div className="text-[12px] uppercase tracking-[0.24em] text-white/48">
+              Intelligence export
+            </div>
+            <div className="mt-4 text-[17px] font-semibold text-white">
+              {state.payload.intelligence?.status === "generated"
+                ? `${state.payload.intelligence.insights ?? 0} insight(s), ${
+                    state.payload.intelligence.recommendations ?? 0
+                  } recommendation(s)`
+                : state.payload.intelligence?.status === "error"
+                  ? "Generation failed"
+                  : "Not reported"}
+            </div>
+            <div className="mt-3 text-[15px] leading-7 text-white/68">
+              Export: {state.payload.intelligence?.exportStatus ?? "not run"}
+              {state.payload.intelligence?.exportError
+                ? ` - ${state.payload.intelligence.exportError}`
+                : ""}
+            </div>
+          </div>
+
+          {state.payload.ownerSheet?.actionRequired?.length ? (
+            <div className="rounded-[22px] border border-amber-300/20 bg-amber-300/8 px-5 py-5 lg:col-span-3">
+              <div className="text-[12px] uppercase tracking-[0.24em] text-amber-100/70">
+                Owner export setup
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                {state.payload.ownerSheet.actionRequired.map((action) => (
+                  <div key={action} className="text-[15px] leading-7 text-amber-50/88">
+                    {action}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
