@@ -72,6 +72,7 @@ model Workspace {
   tokens            IntegrationToken[]
   memberships       Membership[]
   projects          Project[]
+  syncHealthRuns    SyncHealthRun[]
   syncRuns          SyncRun[]
 }
 
@@ -121,6 +122,27 @@ model SyncRun {
   workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, source])
+}
+
+model SyncHealthRun {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  projectId       String?
+  projectSlug     String
+  projectLabel    String
+  state           String
+  from            String
+  to              String
+  sources         Json
+  ownerSheet      Json?
+  intelligence    Json?
+  nextActions     Json?
+  totalRowsSynced Int       @default(0)
+  summary         String
+  createdAt       DateTime  @default(now())
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, projectSlug, createdAt])
 }
 
 model Insight {
