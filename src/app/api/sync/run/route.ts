@@ -21,16 +21,24 @@ type OwnerSheetResult =
       masterSpreadsheetId: string;
       customerSpreadsheetId: string;
       summary: string;
+      label: string;
+      detail: string;
     }
   | {
       status: "skipped";
       reason: string;
       summary: string;
+      label: string;
+      detail: string;
+      missingEnv: string[];
+      actionRequired: string[];
     }
   | {
       status: "error";
       reason: string;
       summary: string;
+      label: string;
+      detail: string;
     };
 
 type IntelligenceResultSummary =
@@ -48,14 +56,17 @@ type IntelligenceResultSummary =
       error: string;
     };
 
-function hasOwnerSheetServiceAccountConfig() {
-  const clientEmail =
-    process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL ||
-    process.env.GOOGLE_CLIENT_EMAIL;
-  const privateKey =
-    process.env.GOOGLE_SHEETS_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY;
+function getOwnerSheetServiceAccountConfigStatus() {
+  const required = [
+    "GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL",
+    "GOOGLE_SHEETS_PRIVATE_KEY",
+  ] as const;
+  const missingEnv = required.filter((name) => !process.env[name]?.trim());
 
-  return Boolean(clientEmail?.trim() && privateKey?.trim());
+  return {
+    configured: missingEnv.length === 0,
+    missingEnv,
+  };
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -116,15 +127,26 @@ export async function POST(req: NextRequest) {
       })),
     );
 
+    const ownerSheetConfig = getOwnerSheetServiceAccountConfigStatus();
+
     let ownerSheet: OwnerSheetResult = {
       status: "skipped",
       reason:
         "GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL and GOOGLE_SHEETS_PRIVATE_KEY are not configured.",
       summary:
-        "OWNER_SHEET: skipped - service-account credentials are not configured.",
+        "OWNER_SHEET: pending configuration - sync completed, owner mirror not written.",
+      label: "Owner export pending configuration",
+      detail:
+        "GA4/GSC sync and intelligence can run without the owner mirror. Add the Google Sheets service-account env vars in Vercel to enable the owner workbook export.",
+      missingEnv: ownerSheetConfig.missingEnv,
+      actionRequired: [
+        "Add GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL in Vercel.",
+        "Add GOOGLE_SHEETS_PRIVATE_KEY in Vercel with newline escapes preserved.",
+        "Share the owner master spreadsheet and assigned customer sheets with the service-account email.",
+      ],
     };
 
-    if (hasOwnerSheetServiceAccountConfig()) {
+    if (ownerSheetConfig.configured) {
       try {
         const ownerExport = await exportNormalizedProjectDataToOwnerSheet({
           workspaceId: mapping.workspaceId,
@@ -146,6 +168,9 @@ export async function POST(req: NextRequest) {
           masterSpreadsheetId: ownerExport.masterSpreadsheetId,
           customerSpreadsheetId: ownerExport.customerSheetId,
           summary: `OWNER_SHEET: mirrored to ${ownerExport.customerSheetId}`,
+          label: "Owner export mirrored",
+          detail:
+            "Normalized project evidence was mirrored into the owner master workbook and the assigned customer workbook.",
         };
       } catch (ownerExportError) {
         console.error("OWNER_EXPORT_FAILED", ownerExportError);
@@ -158,6 +183,9 @@ export async function POST(req: NextRequest) {
           status: "error",
           reason,
           summary: `OWNER_SHEET: failed - ${reason}`,
+          label: "Owner export failed",
+          detail:
+            "GA4/GSC sync completed, but the owner workbook export failed. Check service-account access to the owner master and customer spreadsheets.",
         };
       }
     }
@@ -181,7 +209,7 @@ export async function POST(req: NextRequest) {
         exportStatus: "skipped",
       };
 
-      if (hasOwnerSheetServiceAccountConfig()) {
+      if (ownerSheetConfig.configured) {
         try {
           const intelligenceExport = await exportIntelligenceToSheets({
             run: {
