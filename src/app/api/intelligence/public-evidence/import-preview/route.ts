@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { requireSession } from "@/lib/auth";
-import { compilePublicEvidenceCorpus } from "@/lib/intelligence/public-market-evidence/corpus-compiler";
-import { parsePublicEvidenceCorpusManifest } from "@/lib/intelligence/public-market-evidence/manifest-schema";
-import { getPublicMarketEvidenceBundleFromCorpus } from "@/lib/intelligence/public-market-evidence/repository";
-
-function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
-}
+import { buildPublicEvidenceImportPreview } from "@/lib/intelligence/public-market-evidence/import-preview";
 
 function validationError(error: ZodError) {
   return error.issues.map((issue) => ({
@@ -23,38 +15,14 @@ export async function POST(req: NextRequest) {
     await requireSession();
 
     const body = await req.json().catch(() => null);
-    const manifest = parsePublicEvidenceCorpusManifest(body?.manifest ?? body);
-    const corpus = compilePublicEvidenceCorpus(manifest);
-    const queryBody = body?.query ?? {};
-
-    const bundle = await getPublicMarketEvidenceBundleFromCorpus({
-      corpus,
-      query: {
-        projectLabel:
-          asString(queryBody.projectLabel) ?? asString(queryBody.projectSlug) ?? "beta",
-        projectSlug:
-          asString(queryBody.projectSlug) ?? asString(queryBody.projectLabel) ?? "beta",
-        industry: asString(queryBody.industry),
-        region: asString(queryBody.region),
-        topics: Array.isArray(queryBody.topics)
-          ? queryBody.topics.filter((topic: unknown) => typeof topic === "string")
-          : [],
-        limit: typeof queryBody.limit === "number" ? queryBody.limit : 8,
-      },
+    const preview = await buildPublicEvidenceImportPreview({
+      manifest: body?.manifest ?? body,
+      query: body?.query,
     });
 
     return NextResponse.json({
       ok: true,
-      corpus: {
-        corpusId: manifest.corpusId,
-        name: manifest.name,
-        version: manifest.version,
-        documents: manifest.documents.length,
-        entries: manifest.entries.length,
-      },
-      compileResult: corpus.result,
-      bundle,
-      persisted: false,
+      ...preview,
     });
   } catch (error) {
     if (error instanceof ZodError) {
