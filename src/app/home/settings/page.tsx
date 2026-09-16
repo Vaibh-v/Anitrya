@@ -3,6 +3,8 @@ import { resolveSelectedProject, listWorkspaceProjects } from "@/lib/projects/re
 import { EntitySyncPanel } from "@/components/settings/EntitySyncPanel";
 import { CustomerSheetExportButton } from "@/components/settings/CustomerSheetExportButton";
 import { ProjectMappingPanel } from "@/components/settings/ProjectMappingPanel";
+import { SyncHealthHistoryPanel } from "@/components/settings/SyncHealthHistoryPanel";
+import { listSyncHealthRuns } from "@/lib/sync/sync-health-history";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -53,6 +55,14 @@ export default async function SettingsPage({
   });
 
   const projects = workspaceId ? await listWorkspaceProjects(workspaceId) : [];
+  const syncHealthRuns =
+    workspaceId && selectedProject
+      ? await listSyncHealthRuns({
+          workspaceId,
+          projectSlug: selectedProject.slug,
+          take: 5,
+        })
+      : [];
 
   return (
     <div className="space-y-8">
@@ -159,6 +169,8 @@ export default async function SettingsPage({
             initialFrom={from}
             initialTo={to}
           />
+
+          <SyncHealthHistoryPanel runs={syncHealthRuns} />
 
           <CustomerSheetExportButton
             projectId={selectedProject.slug}
