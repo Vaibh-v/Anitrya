@@ -12,6 +12,10 @@ export type ProviderHealthRecord = {
   syncCapable: boolean;
   evidenceReady: boolean;
   intelligenceReady: boolean;
+  lastSyncAt: string | null;
+  lastSyncStatus: "success" | "error" | "running" | "unknown";
+  lastSyncRows: number;
+  missingRequirements: string[];
   capabilities: ProviderCapabilityMatrix;
   blockers: string[];
   nextAction: string;

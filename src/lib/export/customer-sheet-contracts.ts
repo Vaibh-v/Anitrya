@@ -47,6 +47,10 @@ export type BuildCustomerSheetExportInput = {
       syncCapable: boolean;
       evidenceReady: boolean;
       intelligenceReady: boolean;
+      lastSyncAt: string | null;
+      lastSyncStatus: "success" | "error" | "running" | "unknown";
+      lastSyncRows: number;
+      missingRequirements: string[];
       nextAction: string;
       evidenceTargets: string[];
       blockers: string[];
