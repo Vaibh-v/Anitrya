@@ -24,6 +24,16 @@ const PROVIDER_TOKEN_MAP: Record<string, IntegrationKey | undefined> = {
   GOOGLE_GBP: "google_business_profile",
 };
 
+const PROVIDER_SYNC_SOURCE_MAP: Partial<Record<IntegrationKey, string>> = {
+  google_ga4: "GOOGLE_GA4",
+  google_gsc: "GOOGLE_GSC",
+  google_ads: "GOOGLE_ADS",
+  google_business_profile: "GOOGLE_GBP",
+  google_trends: "GOOGLE_TRENDS",
+  semrush: "SEMRUSH",
+  birdeye: "BIRDEYE",
+};
+
 const PROVIDER_REQUIRED_SCOPES: Partial<Record<IntegrationKey, string[]>> = {
   google_ga4: [GOOGLE_ANALYTICS_SCOPE],
   google_gsc: [GOOGLE_SEARCH_CONSOLE_SCOPE],
@@ -35,6 +45,15 @@ type WorkspaceTokenSummary = {
   provider: string;
   scope: string | null;
   updatedAt: Date;
+};
+
+type WorkspaceSyncRunSummary = {
+  source: string;
+  status: string;
+  rowsSynced: number;
+  startedAt: Date;
+  endedAt: Date | null;
+  metadata: unknown;
 };
 
 function parseScopes(scope: string | null | undefined) {
@@ -84,6 +103,80 @@ function providerSpecificBlockers(providerKey: IntegrationKey) {
   return [];
 }
 
+function metadataMatchesProject(
+  metadata: unknown,
+  projectId?: string | null
+): boolean {
+  if (!projectId) return true;
+  if (!metadata || typeof metadata !== "object") return true;
+
+  const record = metadata as Record<string, unknown>;
+  const candidates = [
+    record.projectId,
+    record.projectSlug,
+    record.projectLabel,
+  ].filter((value): value is string => typeof value === "string");
+
+  return candidates.length === 0 || candidates.includes(projectId);
+}
+
+function findLatestSyncRun(input: {
+  providerKey: IntegrationKey;
+  projectId?: string | null;
+  runs: WorkspaceSyncRunSummary[];
+}) {
+  const source = PROVIDER_SYNC_SOURCE_MAP[input.providerKey];
+  if (!source) return null;
+
+  return (
+    input.runs.find(
+      (run) =>
+        run.source === source &&
+        metadataMatchesProject(run.metadata, input.projectId)
+    ) ?? null
+  );
+}
+
+function normalizeSyncStatus(
+  status: string | null | undefined
+): ProviderHealthRecord["lastSyncStatus"] {
+  if (status === "SUCCESS") return "success";
+  if (status === "ERROR") return "error";
+  if (status === "RUNNING") return "running";
+  return "unknown";
+}
+
+function buildMissingRequirements(input: {
+  connected: boolean;
+  mapped: boolean;
+  syncCapable: boolean;
+  providerRequiresToken: boolean;
+  providerRequiresMapping: boolean;
+  blockers: string[];
+}) {
+  const requirements: string[] = [];
+
+  if (input.providerRequiresToken && !input.connected) {
+    requirements.push("workspace connection");
+  }
+
+  if (input.providerRequiresMapping && !input.mapped) {
+    requirements.push("project mapping");
+  }
+
+  if (!input.syncCapable) {
+    requirements.push("sync runner");
+  }
+
+  if (input.blockers.length > 0) {
+    requirements.push("blocker resolution");
+  }
+
+  return requirements.filter(
+    (requirement, index, array) => array.indexOf(requirement) === index
+  );
+}
+
 function deriveState(input: {
   connected: boolean;
   lifecycle: string;
@@ -107,6 +200,20 @@ export async function buildProviderHealthSummary(
       provider: true,
       scope: true,
       updatedAt: true,
+    },
+  });
+
+  const syncRuns = await prisma.syncRun.findMany({
+    where: { workspaceId },
+    orderBy: { startedAt: "desc" },
+    take: 80,
+    select: {
+      source: true,
+      status: true,
+      rowsSynced: true,
+      startedAt: true,
+      endedAt: true,
+      metadata: true,
     },
   });
 
@@ -149,6 +256,19 @@ export async function buildProviderHealthSummary(
         ? ["Provider is connected conceptually but sync is not yet enabled in the product."]
         : []),
     ].filter((blocker, index, array) => array.indexOf(blocker) === index);
+    const latestSyncRun = findLatestSyncRun({
+      providerKey: provider.key,
+      projectId,
+      runs: syncRuns,
+    });
+    const missingRequirements = buildMissingRequirements({
+      connected,
+      mapped,
+      syncCapable,
+      providerRequiresToken: provider.requiresWorkspaceToken,
+      providerRequiresMapping: provider.requiresProjectMapping,
+      blockers,
+    });
 
     return {
       key: provider.key,
@@ -164,6 +284,13 @@ export async function buildProviderHealthSummary(
       syncCapable,
       evidenceReady,
       intelligenceReady,
+      lastSyncAt:
+        latestSyncRun?.endedAt?.toISOString() ??
+        latestSyncRun?.startedAt.toISOString() ??
+        null,
+      lastSyncStatus: normalizeSyncStatus(latestSyncRun?.status),
+      lastSyncRows: latestSyncRun?.rowsSynced ?? 0,
+      missingRequirements,
       capabilities,
       blockers,
       nextAction: connected
