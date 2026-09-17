@@ -7,6 +7,7 @@ import { SyncHealthHistoryPanel } from "@/components/settings/SyncHealthHistoryP
 import { listSyncHealthRuns } from "@/lib/sync/sync-health-history";
 import { IntegrationReadinessPanel } from "@/components/settings/IntegrationReadinessPanel";
 import { buildProjectIntegrationHealth } from "@/lib/integrations/project-integration-health";
+import { GbpLocationMappingPanel } from "@/components/settings/GbpLocationMappingPanel";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -169,6 +170,11 @@ export default async function SettingsPage({
             projectLabel={selectedProject.name}
             currentGa4PropertyId={selectedProject.ga4PropertyId}
             currentGscSiteId={selectedProject.gscSiteId}
+          />
+
+          <GbpLocationMappingPanel
+            projectSlug={selectedProject.slug}
+            projectLabel={selectedProject.name}
           />
 
           {integrationHealth ? (
