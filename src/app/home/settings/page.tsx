@@ -5,6 +5,8 @@ import { CustomerSheetExportButton } from "@/components/settings/CustomerSheetEx
 import { ProjectMappingPanel } from "@/components/settings/ProjectMappingPanel";
 import { SyncHealthHistoryPanel } from "@/components/settings/SyncHealthHistoryPanel";
 import { listSyncHealthRuns } from "@/lib/sync/sync-health-history";
+import { IntegrationReadinessPanel } from "@/components/settings/IntegrationReadinessPanel";
+import { buildProjectIntegrationHealth } from "@/lib/integrations/project-integration-health";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -63,6 +65,12 @@ export default async function SettingsPage({
           take: 5,
         })
       : [];
+  const integrationHealth = selectedProject
+    ? await buildProjectIntegrationHealth({
+        workspaceId,
+        projectId: selectedProject.slug,
+      })
+    : null;
 
   return (
     <div className="space-y-8">
@@ -162,6 +170,10 @@ export default async function SettingsPage({
             currentGa4PropertyId={selectedProject.ga4PropertyId}
             currentGscSiteId={selectedProject.gscSiteId}
           />
+
+          {integrationHealth ? (
+            <IntegrationReadinessPanel health={integrationHealth} />
+          ) : null}
 
           <EntitySyncPanel
             projectSlug={selectedProject.slug}
