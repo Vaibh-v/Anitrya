@@ -11,6 +11,7 @@ import {
   getProviderCapabilityMatrix,
   PROVIDER_REGISTRY,
 } from "@/lib/integrations/provider-registry";
+import { readGbpLocationMappingFromMetadata } from "@/lib/integrations/google/gbp/location-mapping-ledger";
 import type {
   ProviderHealthRecord,
   ProviderHealthState,
@@ -54,6 +55,11 @@ type WorkspaceSyncRunSummary = {
   startedAt: Date;
   endedAt: Date | null;
   metadata: unknown;
+};
+
+type ProjectMappingSnapshot = {
+  ga4PropertyId: string | null;
+  gscSiteId: string | null;
 };
 
 function parseScopes(scope: string | null | undefined) {
@@ -132,9 +138,27 @@ function findLatestSyncRun(input: {
     input.runs.find(
       (run) =>
         run.source === source &&
+        !readGbpLocationMappingFromMetadata(run.metadata) &&
         metadataMatchesProject(run.metadata, input.projectId)
     ) ?? null
   );
+}
+
+function findLatestGbpMapping(input: {
+  projectId?: string | null;
+  runs: WorkspaceSyncRunSummary[];
+}) {
+  for (const run of input.runs) {
+    if (run.source !== "GOOGLE_GBP") continue;
+
+    const mapping = readGbpLocationMappingFromMetadata(run.metadata);
+
+    if (mapping && metadataMatchesProject(run.metadata, input.projectId)) {
+      return mapping;
+    }
+  }
+
+  return null;
 }
 
 function normalizeSyncStatus(
@@ -190,6 +214,34 @@ function deriveState(input: {
   return "blocked";
 }
 
+function hasProjectMapping(input: {
+  providerKey: IntegrationKey;
+  projectId?: string | null;
+  mapping: ProjectMappingSnapshot | null;
+  runs: WorkspaceSyncRunSummary[];
+}) {
+  if (!input.projectId) return false;
+
+  if (input.providerKey === "google_ga4") {
+    return Boolean(input.mapping?.ga4PropertyId);
+  }
+
+  if (input.providerKey === "google_gsc") {
+    return Boolean(input.mapping?.gscSiteId);
+  }
+
+  if (input.providerKey === "google_business_profile") {
+    return Boolean(
+      findLatestGbpMapping({
+        projectId: input.projectId,
+        runs: input.runs,
+      })
+    );
+  }
+
+  return false;
+}
+
 export async function buildProviderHealthSummary(
   workspaceId: string,
   projectId?: string | null
@@ -216,6 +268,18 @@ export async function buildProviderHealthSummary(
       metadata: true,
     },
   });
+  const projectMapping = projectId
+    ? await prisma.project.findFirst({
+        where: {
+          workspaceId,
+          OR: [{ id: projectId }, { slug: projectId }, { name: projectId }],
+        },
+        select: {
+          ga4PropertyId: true,
+          gscSiteId: true,
+        },
+      })
+    : null;
 
   const tokenKeys = new Set<IntegrationKey>();
   for (const token of tokens) {
@@ -230,7 +294,14 @@ export async function buildProviderHealthSummary(
       tokens,
       tokenKeys,
     });
-    const mapped = provider.requiresProjectMapping ? Boolean(projectId) : true;
+    const mapped = provider.requiresProjectMapping
+      ? hasProjectMapping({
+          providerKey: provider.key,
+          projectId,
+          mapping: projectMapping,
+          runs: syncRuns,
+        })
+      : true;
     const syncCapable = connected && capabilities.canSync.enabled && mapped;
     const evidenceReady =
       connected &&
