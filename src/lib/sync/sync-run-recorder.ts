@@ -13,6 +13,7 @@ const SOURCE_MAP: Record<string, string> = {
   entity_sync: "GOOGLE_GA4",
   GOOGLE_GA4: "GOOGLE_GA4",
   GOOGLE_GSC: "GOOGLE_GSC",
+  GOOGLE_GBP: "GOOGLE_GBP",
 };
 
 const STATUS_MAP: Record<SyncRunRecorderInput["status"], string> = {
