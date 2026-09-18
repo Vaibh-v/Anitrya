@@ -9,6 +9,7 @@ import {
 export const GOOGLE_OAUTH_PROVIDERS: IntegrationProvider[] = [
   IntegrationProvider.GOOGLE_GA4,
   IntegrationProvider.GOOGLE_GSC,
+  IntegrationProvider.GOOGLE_GBP,
 ];
 
 export type ResolveWorkspaceTokenInput = {

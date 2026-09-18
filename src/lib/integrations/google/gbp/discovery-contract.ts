@@ -20,12 +20,12 @@ export const googleBusinessProfileDiscoveryContract: IntegrationDiscoveryContrac
     evidenceTargets: ["overview", "local", "intelligence"],
     preserved: true,
     blockerReasons: [
-      "OAuth discovery contract is defined, but no Business Profile discovery runner is active yet.",
-      "Location mapping storage is not yet present in the project schema.",
+      "OAuth discovery is available, but Business Profile performance sync is not active yet.",
+      "Location mapping is recorded through the server-side sync ledger until dedicated GBP storage is introduced.",
       "Normalized GBP evidence tables are not yet present in the project schema.",
     ],
     nextAction:
-      "Add a server-side discovery runner that lists accessible accounts and locations, then introduce location mapping storage before enabling sync.",
+      "Use OAuth discovery to select a project location, then introduce normalized GBP evidence storage before enabling sync.",
   };
 
 export type GoogleBusinessProfileLocationAsset = IntegrationDiscoveryAsset & {
@@ -47,7 +47,7 @@ export function buildPreservedGoogleBusinessProfileDiscoveryResult(): Integratio
     status: "preserved",
     assets: [],
     reason:
-      "Google Business Profile discovery is contracted but remains inactive until OAuth discovery, location mapping, and normalized evidence storage are wired server-side.",
+      "Google Business Profile discovery is preserved until OAuth discovery can run for the connected workspace.",
     checkedAt: new Date().toISOString(),
   };
 }
