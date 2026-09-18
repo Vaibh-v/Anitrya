@@ -13,13 +13,7 @@ import {
   upsertRowByKey,
 } from "@/lib/intelligence/owner-network/google-sheets";
 import { ensureOwnerCustomerSheet } from "@/lib/intelligence/owner-network/customer-sheet-network";
-
-type SyncResult = {
-  provider: "GOOGLE_GA4" | "GOOGLE_GSC";
-  status: "success" | "error" | "skipped";
-  reason: string;
-  rowsSynced: number;
-};
+import type { IntegrationSyncResult } from "@/lib/integrations/sync-contracts";
 
 type ExportNormalizedProjectDataInput = {
   workspaceId: string;
@@ -33,7 +27,7 @@ type ExportNormalizedProjectDataInput = {
   gscSiteUrl: string | null;
   from: string;
   to: string;
-  results: SyncResult[];
+  results: IntegrationSyncResult[];
 };
 
 function nowIso() {
