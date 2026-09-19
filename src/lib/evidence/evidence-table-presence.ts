@@ -5,6 +5,7 @@ export type EvidenceTablePresence = {
   ga4LandingPageDaily: boolean;
   gscQueryDaily: boolean;
   gscPageDaily: boolean;
+  googleAdsCampaignDaily: boolean;
   gbpLocationDaily: boolean;
 };
 
@@ -31,12 +32,14 @@ export async function getEvidenceTablePresence(): Promise<EvidenceTablePresence>
     ga4LandingPageDaily,
     gscQueryDaily,
     gscPageDaily,
+    googleAdsCampaignDaily,
     gbpLocationDaily,
   ] = await Promise.all([
     tableExists("ga4_source_daily"),
     tableExists("ga4_landing_page_daily"),
     tableExists("gsc_query_daily"),
     tableExists("gsc_page_daily"),
+    tableExists("google_ads_campaign_daily"),
     tableExists("gbp_location_daily"),
   ]);
 
@@ -45,6 +48,7 @@ export async function getEvidenceTablePresence(): Promise<EvidenceTablePresence>
     ga4LandingPageDaily,
     gscQueryDaily,
     gscPageDaily,
+    googleAdsCampaignDaily,
     gbpLocationDaily,
   };
 }
