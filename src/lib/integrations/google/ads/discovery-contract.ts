@@ -15,16 +15,16 @@ export const googleAdsDiscoveryContract: IntegrationDiscoveryContract = {
   assetKind: "ads_account",
   requiresWorkspaceToken: true,
   requiresProjectMapping: true,
-  normalizedTargetTables: [],
+  normalizedTargetTables: ["google_ads_campaign_daily"],
   evidenceTargets: ["overview", "paid_media", "intelligence"],
   preserved: true,
   blockerReasons: [
     "Google Ads discovery requires a workspace Google OAuth token with the Ads scope.",
     "Google Ads API calls require a server-side developer token before customer discovery can run.",
-    "Google Ads customer mapping and normalized paid-media evidence tables are not active yet.",
+    "Google Ads customer mapping is required before normalized paid-media evidence sync can run.",
   ],
   nextAction:
-    "Set GOOGLE_ADS_DEVELOPER_TOKEN server-side, discover accessible Google Ads customers, then add project-to-customer mapping before enabling paid-media sync.",
+    "Set GOOGLE_ADS_DEVELOPER_TOKEN server-side, discover accessible Google Ads customers, map the project to a customer, then run paid-media sync.",
 };
 
 export type GoogleAdsAccountAsset = IntegrationDiscoveryAsset & {
@@ -44,7 +44,7 @@ export function buildPreservedGoogleAdsDiscoveryResult(): IntegrationDiscoveryRe
     status: "preserved",
     assets: [],
     reason:
-      "Google Ads discovery is contracted but remains inactive until OAuth access, developer-token configuration, customer mapping, and normalized paid-media storage are wired server-side.",
+      "Google Ads discovery is contracted but remains inactive until OAuth access, developer-token configuration, and customer mapping are available server-side.",
     checkedAt: new Date().toISOString(),
   };
 }

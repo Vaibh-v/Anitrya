@@ -3,6 +3,7 @@ import type { ResolvedProjectMapping } from "@/lib/project/project-mapper";
 export type IntegrationSyncProvider =
   | "GOOGLE_GA4"
   | "GOOGLE_GSC"
+  | "GOOGLE_ADS"
   | "GOOGLE_GBP";
 
 export type IntegrationSyncStatus = "success" | "error" | "skipped";

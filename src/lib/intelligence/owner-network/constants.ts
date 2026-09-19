@@ -15,6 +15,7 @@ export const CUSTOMER_TABS = {
   ga4LandingPageDaily: "ga4_landing_page_daily",
   gscQueryDaily: "gsc_query_daily",
   gscPageDaily: "gsc_page_daily",
+  googleAdsCampaignDaily: "google_ads_campaign_daily",
   gbpLocationDaily: "gbp_location_daily",
 } as const;
 
