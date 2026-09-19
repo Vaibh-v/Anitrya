@@ -286,6 +286,22 @@ export async function exportCustomerSheet(input: {
         "position",
       ],
     }),
+    readTableDataset({
+      tableName: "gbp_location_daily",
+      title: "gbp_location_daily",
+      workspaceId: input.workspaceId,
+      projectSlug: input.projectSlug,
+      from: input.from,
+      to: input.to,
+      preferredColumns: [
+        "date",
+        "location_name",
+        "location_label",
+        "account_name",
+        "metric",
+        "value",
+      ],
+    }),
   ]);
 
   for (const dataset of dynamicDatasets) {
