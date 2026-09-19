@@ -181,6 +181,10 @@ export async function exportNormalizedProjectDataToOwnerSheet(
     network.masterSpreadsheetId,
     CUSTOMER_TABS.gscPageDaily,
   );
+  const gbpLocationRows = await readSheetValues(
+    network.masterSpreadsheetId,
+    CUSTOMER_TABS.gbpLocationDaily,
+  );
 
   const copyProjectRows = async (args: {
     sourceRows: string[][];
@@ -233,6 +237,12 @@ export async function exportNormalizedProjectDataToOwnerSheet(
     sourceRows: gscPageRows,
     tabName: CUSTOMER_TABS.gscPageDaily,
     headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gscPageDaily]],
+  });
+
+  await copyProjectRows({
+    sourceRows: gbpLocationRows,
+    tabName: CUSTOMER_TABS.gbpLocationDaily,
+    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gbpLocationDaily]],
   });
 
   return {

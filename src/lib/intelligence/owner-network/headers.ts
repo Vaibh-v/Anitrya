@@ -119,4 +119,17 @@ export const CUSTOMER_HEADERS: Record<string, string[]> = {
     "position",
     "synced_at",
   ],
+  [CUSTOMER_TABS.gbpLocationDaily]: [
+    "workspace_id",
+    "project_id",
+    "project_slug",
+    "project_label",
+    "date",
+    "location_name",
+    "location_label",
+    "account_name",
+    "metric",
+    "value",
+    "synced_at",
+  ],
 };
