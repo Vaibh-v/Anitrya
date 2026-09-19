@@ -5,6 +5,7 @@ export type EvidenceTablePresence = {
   ga4LandingPageDaily: boolean;
   gscQueryDaily: boolean;
   gscPageDaily: boolean;
+  gbpLocationDaily: boolean;
 };
 
 async function tableExists(tableName: string): Promise<boolean> {
@@ -25,18 +26,25 @@ async function tableExists(tableName: string): Promise<boolean> {
 }
 
 export async function getEvidenceTablePresence(): Promise<EvidenceTablePresence> {
-  const [ga4SourceDaily, ga4LandingPageDaily, gscQueryDaily, gscPageDaily] =
-    await Promise.all([
-      tableExists("ga4_source_daily"),
-      tableExists("ga4_landing_page_daily"),
-      tableExists("gsc_query_daily"),
-      tableExists("gsc_page_daily"),
-    ]);
+  const [
+    ga4SourceDaily,
+    ga4LandingPageDaily,
+    gscQueryDaily,
+    gscPageDaily,
+    gbpLocationDaily,
+  ] = await Promise.all([
+    tableExists("ga4_source_daily"),
+    tableExists("ga4_landing_page_daily"),
+    tableExists("gsc_query_daily"),
+    tableExists("gsc_page_daily"),
+    tableExists("gbp_location_daily"),
+  ]);
 
   return {
     ga4SourceDaily,
     ga4LandingPageDaily,
     gscQueryDaily,
     gscPageDaily,
+    gbpLocationDaily,
   };
 }
