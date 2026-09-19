@@ -3,6 +3,7 @@ import { google } from "googleapis";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getGoogleSheetsAccessTokenForWorkspace } from "@/lib/integrations/google/get-google-access-token";
+import { ensureNormalizedEvidenceTables } from "@/lib/evidence/ensure-normalized-evidence-tables";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -146,6 +147,8 @@ export async function POST(req: NextRequest) {
       [project.workspaceId, project.id, project.slug, project.name, from, to],
     ];
 
+    await ensureNormalizedEvidenceTables();
+
     const ga4SourceRows = await queryRows(
       `
       SELECT
@@ -216,6 +219,25 @@ export async function POST(req: NextRequest) {
       [project.workspaceId, project.slug, from, to],
     );
 
+    const gbpLocationRows = await queryRows(
+      `
+      SELECT
+        date::text AS date,
+        location_name,
+        location_label,
+        account_name,
+        metric,
+        COALESCE(value, 0) AS value
+      FROM gbp_location_daily
+      WHERE workspace_id = $1
+        AND project_slug = $2
+        AND date >= CAST($3 AS DATE)
+        AND date <= CAST($4 AS DATE)
+      ORDER BY date ASC, metric ASC
+      `,
+      [project.workspaceId, project.slug, from, to],
+    );
+
     await writeSheetValues({
       sheets,
       spreadsheetId,
@@ -261,6 +283,21 @@ export async function POST(req: NextRequest) {
       title: "gsc_page_daily",
       header: ["date", "page", "clicks", "impressions", "ctr", "position"],
       rows: gscPageRows,
+    });
+
+    await writeSheetValues({
+      sheets,
+      spreadsheetId,
+      title: "gbp_location_daily",
+      header: [
+        "date",
+        "location_name",
+        "location_label",
+        "account_name",
+        "metric",
+        "value",
+      ],
+      rows: gbpLocationRows,
     });
 
     return NextResponse.json({
