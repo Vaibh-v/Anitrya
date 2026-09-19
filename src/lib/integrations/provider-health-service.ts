@@ -11,6 +11,7 @@ import {
   getProviderCapabilityMatrix,
   PROVIDER_REGISTRY,
 } from "@/lib/integrations/provider-registry";
+import { readGoogleAdsAccountMappingFromMetadata } from "@/lib/integrations/google/ads/account-mapping-ledger";
 import { readGbpLocationMappingFromMetadata } from "@/lib/integrations/google/gbp/location-mapping-ledger";
 import type {
   ProviderHealthRecord,
@@ -138,10 +139,28 @@ function findLatestSyncRun(input: {
     input.runs.find(
       (run) =>
         run.source === source &&
+        !readGoogleAdsAccountMappingFromMetadata(run.metadata) &&
         !readGbpLocationMappingFromMetadata(run.metadata) &&
         metadataMatchesProject(run.metadata, input.projectId)
     ) ?? null
   );
+}
+
+function findLatestGoogleAdsMapping(input: {
+  projectId?: string | null;
+  runs: WorkspaceSyncRunSummary[];
+}) {
+  for (const run of input.runs) {
+    if (run.source !== "GOOGLE_ADS") continue;
+
+    const mapping = readGoogleAdsAccountMappingFromMetadata(run.metadata);
+
+    if (mapping && metadataMatchesProject(run.metadata, input.projectId)) {
+      return mapping;
+    }
+  }
+
+  return null;
 }
 
 function findLatestGbpMapping(input: {
@@ -230,6 +249,15 @@ function hasProjectMapping(input: {
     return Boolean(input.mapping?.gscSiteId);
   }
 
+  if (input.providerKey === "google_ads") {
+    return Boolean(
+      findLatestGoogleAdsMapping({
+        projectId: input.projectId,
+        runs: input.runs,
+      })
+    );
+  }
+
   if (input.providerKey === "google_business_profile") {
     return Boolean(
       findLatestGbpMapping({
@@ -309,6 +337,7 @@ export async function buildProviderHealthSummary(
       capabilities.canExportEvidence.enabled &&
       (provider.key === "google_ga4" ||
         provider.key === "google_gsc" ||
+        provider.key === "google_ads" ||
         provider.key === "google_business_profile");
     const intelligenceReady =
       connected && mapped && capabilities.canPowerIntelligence.enabled;
