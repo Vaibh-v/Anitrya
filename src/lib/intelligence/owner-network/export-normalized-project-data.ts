@@ -181,6 +181,10 @@ export async function exportNormalizedProjectDataToOwnerSheet(
     network.masterSpreadsheetId,
     CUSTOMER_TABS.gscPageDaily,
   );
+  const googleAdsCampaignRows = await readSheetValues(
+    network.masterSpreadsheetId,
+    CUSTOMER_TABS.googleAdsCampaignDaily,
+  );
   const gbpLocationRows = await readSheetValues(
     network.masterSpreadsheetId,
     CUSTOMER_TABS.gbpLocationDaily,
@@ -237,6 +241,12 @@ export async function exportNormalizedProjectDataToOwnerSheet(
     sourceRows: gscPageRows,
     tabName: CUSTOMER_TABS.gscPageDaily,
     headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gscPageDaily]],
+  });
+
+  await copyProjectRows({
+    sourceRows: googleAdsCampaignRows,
+    tabName: CUSTOMER_TABS.googleAdsCampaignDaily,
+    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.googleAdsCampaignDaily]],
   });
 
   await copyProjectRows({
