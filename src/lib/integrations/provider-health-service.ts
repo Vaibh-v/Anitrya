@@ -307,7 +307,9 @@ export async function buildProviderHealthSummary(
       connected &&
       mapped &&
       capabilities.canExportEvidence.enabled &&
-      (provider.key === "google_ga4" || provider.key === "google_gsc");
+      (provider.key === "google_ga4" ||
+        provider.key === "google_gsc" ||
+        provider.key === "google_business_profile");
     const intelligenceReady =
       connected && mapped && capabilities.canPowerIntelligence.enabled;
 

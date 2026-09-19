@@ -7,6 +7,7 @@ export type CustomerSheetExportBundle = {
   ga4LandingPages: string[][];
   gscQueries: string[][];
   gscPages: string[][];
+  gbpLocations: string[][];
   notes: string[][];
 };
 
@@ -21,74 +22,93 @@ type Input = {
 export async function buildCustomerSheetExportBundle(
   input: Input
 ): Promise<CustomerSheetExportBundle> {
-  const [ga4Sources, ga4LandingPages, gscQueries, gscPages] = await Promise.all([
-    prisma.$queryRaw<
-      Array<{
-        date: string;
-        source: string | null;
-        sessions: number | null;
-      }>
-    >`
-      SELECT date, source, sessions
-      FROM ga4_source_daily
-      WHERE workspace_id = ${input.workspaceId}
-        AND project_slug = ${input.projectId}
-        AND date >= ${input.from}
-        AND date <= ${input.to}
-      ORDER BY date ASC, source ASC
-    `,
-    prisma.$queryRaw<
-      Array<{
-        date: string;
-        landing_page: string | null;
-        sessions: number | null;
-      }>
-    >`
-      SELECT date, landing_page, sessions
-      FROM ga4_landing_page_daily
-      WHERE workspace_id = ${input.workspaceId}
-        AND project_slug = ${input.projectId}
-        AND date >= ${input.from}
-        AND date <= ${input.to}
-      ORDER BY date ASC, landing_page ASC
-    `,
-    prisma.$queryRaw<
-      Array<{
-        date: string;
-        query: string | null;
-        clicks: number | null;
-        impressions: number | null;
-        ctr: number | null;
-        position: number | null;
-      }>
-    >`
-      SELECT date, query, clicks, impressions, ctr, position
-      FROM gsc_query_daily
-      WHERE workspace_id = ${input.workspaceId}
-        AND project_slug = ${input.projectId}
-        AND date >= ${input.from}
-        AND date <= ${input.to}
-      ORDER BY date ASC, query ASC
-    `,
-    prisma.$queryRaw<
-      Array<{
-        date: string;
-        page: string | null;
-        clicks: number | null;
-        impressions: number | null;
-        ctr: number | null;
-        position: number | null;
-      }>
-    >`
-      SELECT date, page, clicks, impressions, ctr, position
-      FROM gsc_page_daily
-      WHERE workspace_id = ${input.workspaceId}
-        AND project_slug = ${input.projectId}
-        AND date >= ${input.from}
-        AND date <= ${input.to}
-      ORDER BY date ASC, page ASC
-    `,
-  ]);
+  const [ga4Sources, ga4LandingPages, gscQueries, gscPages, gbpLocations] =
+    await Promise.all([
+      prisma.$queryRaw<
+        Array<{
+          date: string;
+          source: string | null;
+          sessions: number | null;
+        }>
+      >`
+        SELECT date, source, sessions
+        FROM ga4_source_daily
+        WHERE workspace_id = ${input.workspaceId}
+          AND project_slug = ${input.projectId}
+          AND date >= ${input.from}
+          AND date <= ${input.to}
+        ORDER BY date ASC, source ASC
+      `,
+      prisma.$queryRaw<
+        Array<{
+          date: string;
+          landing_page: string | null;
+          sessions: number | null;
+        }>
+      >`
+        SELECT date, landing_page, sessions
+        FROM ga4_landing_page_daily
+        WHERE workspace_id = ${input.workspaceId}
+          AND project_slug = ${input.projectId}
+          AND date >= ${input.from}
+          AND date <= ${input.to}
+        ORDER BY date ASC, landing_page ASC
+      `,
+      prisma.$queryRaw<
+        Array<{
+          date: string;
+          query: string | null;
+          clicks: number | null;
+          impressions: number | null;
+          ctr: number | null;
+          position: number | null;
+        }>
+      >`
+        SELECT date, query, clicks, impressions, ctr, position
+        FROM gsc_query_daily
+        WHERE workspace_id = ${input.workspaceId}
+          AND project_slug = ${input.projectId}
+          AND date >= ${input.from}
+          AND date <= ${input.to}
+        ORDER BY date ASC, query ASC
+      `,
+      prisma.$queryRaw<
+        Array<{
+          date: string;
+          page: string | null;
+          clicks: number | null;
+          impressions: number | null;
+          ctr: number | null;
+          position: number | null;
+        }>
+      >`
+        SELECT date, page, clicks, impressions, ctr, position
+        FROM gsc_page_daily
+        WHERE workspace_id = ${input.workspaceId}
+          AND project_slug = ${input.projectId}
+          AND date >= ${input.from}
+          AND date <= ${input.to}
+        ORDER BY date ASC, page ASC
+      `,
+      prisma.$queryRaw<
+        Array<{
+          date: string;
+          location_name: string | null;
+          location_label: string | null;
+          account_name: string | null;
+          metric: string | null;
+          value: number | null;
+        }>
+      >`
+        SELECT date, location_name, location_label, account_name, metric, value
+        FROM gbp_location_daily
+        WHERE workspace_id = ${input.workspaceId}
+          AND project_slug = ${input.projectId}
+          AND date >= ${input.from}
+          AND date <= ${input.to}
+        ORDER BY date ASC, metric ASC
+      `,
+    ]);
 
   return {
     workspace: [
@@ -105,6 +125,7 @@ export async function buildCustomerSheetExportBundle(
       ["ga4_landing_rows", String(ga4LandingPages.length)],
       ["gsc_query_rows", String(gscQueries.length)],
       ["gsc_page_rows", String(gscPages.length)],
+      ["gbp_location_rows", String(gbpLocations.length)],
     ],
     ga4Sources: [
       ["date", "source", "sessions"],
@@ -160,11 +181,26 @@ export async function buildCustomerSheetExportBundle(
           : [["", "No GSC page rows found for this range", "0", "0", "0", "0"]]
       ),
     ],
+    gbpLocations: [
+      ["date", "location_name", "location_label", "account_name", "metric", "value"],
+      ...(
+        gbpLocations.length
+          ? gbpLocations.map((row) => [
+              row.date ?? "",
+              row.location_name ?? "",
+              row.location_label ?? "",
+              row.account_name ?? "",
+              row.metric ?? "",
+              String(row.value ?? 0),
+            ])
+          : [["", "No GBP location rows found for this range", "", "", "", "0"]]
+      ),
+    ],
     notes: [
       ["note_type", "message"],
       [
         "export_status",
-        "This export writes workspace, overview, GA4 source, GA4 landing page, GSC query, and GSC page tabs.",
+        "This export writes workspace, overview, GA4 source, GA4 landing page, GSC query, GSC page, and GBP location tabs.",
       ],
       [
         "sync_status_hint",
