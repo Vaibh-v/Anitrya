@@ -16,16 +16,15 @@ export const googleBusinessProfileDiscoveryContract: IntegrationDiscoveryContrac
     assetKind: "business_location",
     requiresWorkspaceToken: true,
     requiresProjectMapping: true,
-    normalizedTargetTables: [],
+    normalizedTargetTables: ["gbp_location_daily"],
     evidenceTargets: ["overview", "local", "intelligence"],
     preserved: true,
     blockerReasons: [
-      "OAuth discovery is available, but Business Profile performance sync is not active yet.",
-      "Location mapping is recorded through the server-side sync ledger until dedicated GBP storage is introduced.",
-      "Normalized GBP evidence tables are not yet present in the project schema.",
+      "Google Business Profile performance sync requires a mapped business location before evidence can be collected.",
+      "Location mapping is recorded through the server-side sync ledger until project-level GBP fields are introduced.",
     ],
     nextAction:
-      "Use OAuth discovery to select a project location, then introduce normalized GBP evidence storage before enabling sync.",
+      "Use OAuth discovery to select a project location, then run entity sync to collect normalized GBP location performance evidence.",
   };
 
 export type GoogleBusinessProfileLocationAsset = IntegrationDiscoveryAsset & {
