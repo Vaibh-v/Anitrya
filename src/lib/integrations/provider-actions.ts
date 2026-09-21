@@ -18,6 +18,15 @@ function normalizeProvider(provider: string): IntegrationProvider {
     google_gsc: IntegrationProvider.GOOGLE_GSC,
     google_gbp: IntegrationProvider.GOOGLE_GBP,
     google_ads: IntegrationProvider.GOOGLE_ADS,
+    google_trends: IntegrationProvider.GOOGLE_TRENDS,
+    semrush: IntegrationProvider.SEMRUSH,
+    birdeye: IntegrationProvider.BIRDEYE,
+    ahrefs: IntegrationProvider.AHREFS,
+
+    GOOGLE_TRENDS: IntegrationProvider.GOOGLE_TRENDS,
+    SEMRUSH: IntegrationProvider.SEMRUSH,
+    BIRDEYE: IntegrationProvider.BIRDEYE,
+    AHREFS: IntegrationProvider.AHREFS,
   };
 
   const resolved = map[normalized] ?? map[normalized.toUpperCase()];
@@ -61,14 +70,17 @@ export async function connectApiKeyProvider(input: {
       },
     },
     update: {
-      accessToken: encrypted,
+      apiKey: encrypted,
+      accessToken: null,
+      refreshToken: null,
+      expiresAt: null,
       userId,
       updatedAt: new Date(),
     },
     create: {
       workspaceId,
       provider,
-      accessToken: encrypted,
+      apiKey: encrypted,
       userId,
     },
   });
