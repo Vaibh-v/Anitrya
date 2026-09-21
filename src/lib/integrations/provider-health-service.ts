@@ -24,6 +24,9 @@ const PROVIDER_TOKEN_MAP: Record<string, IntegrationKey | undefined> = {
   GOOGLE_GSC: "google_gsc",
   GOOGLE_ADS: "google_ads",
   GOOGLE_GBP: "google_business_profile",
+  GOOGLE_TRENDS: "google_trends",
+  SEMRUSH: "semrush",
+  BIRDEYE: "birdeye",
 };
 
 const PROVIDER_SYNC_SOURCE_MAP: Partial<Record<IntegrationKey, string>> = {
