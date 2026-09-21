@@ -238,6 +238,31 @@ export async function POST(req: NextRequest) {
       [project.workspaceId, project.slug, from, to],
     );
 
+    const googleAdsCampaignRows = await queryRows(
+      `
+      SELECT
+        date::text AS date,
+        customer_id,
+        campaign_id,
+        campaign_name,
+        campaign_status,
+        channel_type,
+        COALESCE(impressions, 0) AS impressions,
+        COALESCE(clicks, 0) AS clicks,
+        COALESCE(cost_micros, 0) AS cost_micros,
+        COALESCE(conversions, 0) AS conversions,
+        COALESCE(ctr, 0) AS ctr,
+        COALESCE(average_cpc_micros, 0) AS average_cpc_micros
+      FROM google_ads_campaign_daily
+      WHERE workspace_id = $1
+        AND project_slug = $2
+        AND date >= CAST($3 AS DATE)
+        AND date <= CAST($4 AS DATE)
+      ORDER BY date ASC, campaign_id ASC
+      `,
+      [project.workspaceId, project.slug, from, to],
+    );
+
     await writeSheetValues({
       sheets,
       spreadsheetId,
@@ -283,6 +308,27 @@ export async function POST(req: NextRequest) {
       title: "gsc_page_daily",
       header: ["date", "page", "clicks", "impressions", "ctr", "position"],
       rows: gscPageRows,
+    });
+
+    await writeSheetValues({
+      sheets,
+      spreadsheetId,
+      title: "google_ads_campaign_daily",
+      header: [
+        "date",
+        "customer_id",
+        "campaign_id",
+        "campaign_name",
+        "campaign_status",
+        "channel_type",
+        "impressions",
+        "clicks",
+        "cost_micros",
+        "conversions",
+        "ctr",
+        "average_cpc_micros",
+      ],
+      rows: googleAdsCampaignRows,
     });
 
     await writeSheetValues({
