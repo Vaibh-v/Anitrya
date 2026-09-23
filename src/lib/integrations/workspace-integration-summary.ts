@@ -11,6 +11,9 @@ const PROVIDER_MAP: Record<string, WorkspaceIntegrationState["key"] | undefined>
   GOOGLE_GSC: "google_gsc",
   GOOGLE_ADS: "google_ads",
   GOOGLE_GBP: "google_business_profile",
+  GOOGLE_TRENDS: "google_trends",
+  SEMRUSH: "semrush",
+  BIRDEYE: "birdeye",
 };
 
 export async function buildWorkspaceIntegrationSummary(
