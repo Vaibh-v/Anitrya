@@ -29,7 +29,7 @@ export async function buildIntegrationToggleSeed(input: {
         : "Workspace is missing, so GSC cannot be activated safely.",
     },
     {
-      providerKey: "google_gbp",
+      providerKey: "google_business_profile",
       title: "Google Business Profile",
       description:
         "Local-intent and store-level visibility layer. Ready to preserve now and activate once normalized ingestion is wired.",

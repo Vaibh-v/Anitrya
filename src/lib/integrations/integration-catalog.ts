@@ -47,7 +47,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
     key: "google_ads",
     label: "Google Ads",
     category: "paid_media",
-    lifecycle: "preserved",
+    lifecycle: "active",
     connectionMode: "oauth",
     capabilities: [
       "discovery",
@@ -87,7 +87,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogItem[] = [
     key: "google_business_profile",
     label: "Google Business Profile",
     category: "local",
-    lifecycle: "preserved",
+    lifecycle: "active",
     connectionMode: "oauth",
     capabilities: [
       "sync",
