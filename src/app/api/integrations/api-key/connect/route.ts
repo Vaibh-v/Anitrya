@@ -12,9 +12,17 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result);
   } catch (err: any) {
+    const message = err?.message ?? "Failed to connect API-key provider.";
+    const status =
+      message.includes("preserved in architecture") ||
+      message.includes("Unsupported provider") ||
+      message.includes("Invalid API key")
+        ? 400
+        : 500;
+
     return NextResponse.json(
-      { ok: false, error: err.message },
-      { status: 500 }
+      { ok: false, error: message },
+      { status }
     );
   }
 }
