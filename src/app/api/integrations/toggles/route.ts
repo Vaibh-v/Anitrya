@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth";
 const ACTIVE_PROVIDER_KEYS = new Set([
   "google_ga4",
   "google_gsc",
-  "google_gbp",
+  "google_business_profile",
   "google_ads",
 ]);
 
@@ -18,6 +18,10 @@ const PRESERVED_PROVIDER_KEYS = new Set([
   "linkwhisper",
   "birdeye",
 ]);
+
+const PROVIDER_KEY_ALIASES: Record<string, string> = {
+  google_gbp: "google_business_profile",
+};
 
 export async function POST(request: Request) {
   try {
@@ -36,7 +40,10 @@ export async function POST(request: Request) {
       enabled?: boolean;
     };
 
-    const providerKey = body.providerKey?.trim();
+    const rawProviderKey = body.providerKey?.trim();
+    const providerKey = rawProviderKey
+      ? PROVIDER_KEY_ALIASES[rawProviderKey] ?? rawProviderKey
+      : "";
     if (!providerKey) {
       return NextResponse.json(
         { error: "Provider key is required." },
