@@ -38,6 +38,19 @@ function normalizeProvider(provider: string): IntegrationProvider {
   return resolved;
 }
 
+const API_KEY_CONNECTABLE_PROVIDERS = new Set<IntegrationProvider>([
+  IntegrationProvider.SEMRUSH,
+  IntegrationProvider.BIRDEYE,
+]);
+
+function assertApiKeyConnectable(provider: IntegrationProvider) {
+  if (API_KEY_CONNECTABLE_PROVIDERS.has(provider)) return;
+
+  throw new Error(
+    "This provider is preserved in architecture but is not yet eligible for API-key activation."
+  );
+}
+
 export async function connectApiKeyProvider(input: {
   provider: string;
   apiKey: string;
@@ -60,6 +73,8 @@ export async function connectApiKeyProvider(input: {
   }
 
   const provider = normalizeProvider(input.provider);
+  assertApiKeyConnectable(provider);
+
   const encrypted = encryptSecret(input.apiKey.trim());
 
   await prisma.integrationToken.upsert({
