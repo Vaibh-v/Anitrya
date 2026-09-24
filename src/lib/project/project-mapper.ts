@@ -77,7 +77,7 @@ export async function getProjectMapping(
       : {
           workspaceId,
         },
-    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ createdAt: "asc" }],
     select: {
       id: true,
       slug: true,

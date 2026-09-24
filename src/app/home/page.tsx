@@ -28,7 +28,7 @@ export default async function HomePage(props: PageProps) {
   start.setUTCDate(start.getUTCDate() - days + 1);
   const from = params.from ?? formatDate(start);
   const to = params.to ?? formatDate(today);
-  const projectRef = params.project ?? "zt";
+  const projectRef = params.project ?? null;
 
   let project: Awaited<ReturnType<typeof getProjectMapping>> | null = null;
   let projectError = false;
@@ -40,13 +40,15 @@ export default async function HomePage(props: PageProps) {
 
   const summary = project
     ? await getOverviewEvidenceSummary({ workspaceId, projectId: project.projectSlug, from, to })
-    : { ga4SourceRows: 0, ga4LandingRows: 0, gscQueryRows: 0, gscPageRows: 0, failureReason: null };
+    : { ga4SourceRows: 0, ga4LandingRows: 0, gscQueryRows: 0, gscPageRows: 0, googleAdsCampaignRows: 0, gbpLocationRows: 0, failureReason: null };
 
   const sources = [
     { name: "GA4 source rows", count: summary.ga4SourceRows, color: "cyan" },
     { name: "GA4 landing rows", count: summary.ga4LandingRows, color: "violet" },
     { name: "GSC query rows", count: summary.gscQueryRows, color: "green" },
     { name: "GSC page rows", count: summary.gscPageRows, color: "amber" },
+    { name: "Google Ads campaign rows", count: summary.googleAdsCampaignRows, color: "cyan" },
+    { name: "Business Profile rows", count: summary.gbpLocationRows, color: "violet" },
   ];
   const total = sources.reduce((sum, source) => sum + source.count, 0);
   const available = sources.filter((source) => source.count > 0).length;
@@ -57,7 +59,7 @@ export default async function HomePage(props: PageProps) {
     : sources.filter((source) => source.count === 0).map((source) => `Sync ${source.name.replace(" rows", "")} evidence for this project.`);
   if (!unavailable && actions.length === 0) actions.push("Review cross-source evidence and validate the next intelligence hypothesis.");
 
-  const query = new URLSearchParams({ project: project?.projectSlug ?? projectRef, from, to });
+  const query = new URLSearchParams({ project: project?.projectSlug ?? projectRef ?? "", from, to });
   const destination = (route: string) => `${route}?${query.toString()}`;
 
   return (
@@ -96,7 +98,7 @@ export default async function HomePage(props: PageProps) {
             ))}
           </section>
 
-          <SignalGlobe searchRows={unavailable ? 0 : summary.gscQueryRows + summary.gscPageRows} trafficRows={unavailable ? 0 : summary.ga4SourceRows + summary.ga4LandingRows} />
+          <SignalGlobe key={project?.projectSlug ?? "missing"} projectLabel={project?.projectLabel ?? "No project"} searchRows={unavailable ? 0 : summary.gscQueryRows + summary.gscPageRows} trafficRows={unavailable ? 0 : summary.ga4SourceRows + summary.ga4LandingRows} paidRows={unavailable ? 0 : summary.googleAdsCampaignRows} localRows={unavailable ? 0 : summary.gbpLocationRows} />
 
           <section className="eye-bento" aria-label="Intelligence modules">
             <div className="eye-panel">

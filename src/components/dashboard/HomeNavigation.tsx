@@ -18,13 +18,15 @@ export function HomeNavigation() {
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [projects, setProjects] = useState<Array<{ slug: string; name: string }>>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const project = searchParams.get("project");
+  const activeProject = project ?? projects[0]?.slug ?? null;
   const preset = searchParams.get("preset") ?? "30d";
 
   function hrefFor(href: string) {
     const query = new URLSearchParams();
-    if (project) query.set("project", project);
+    if (activeProject) query.set("project", activeProject);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
     if (from && to) {
@@ -43,6 +45,7 @@ export function HomeNavigation() {
 
   function setRange(days: number) {
     const query = new URLSearchParams(searchParams.toString());
+    if (activeProject) query.set("project", activeProject);
     const end = new Date();
     const start = new Date(end);
     start.setUTCDate(start.getUTCDate() - days + 1);
@@ -51,6 +54,19 @@ export function HomeNavigation() {
     query.set("preset", `${days}d`);
     router.push(`${pathname}?${query}`);
   }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/anitrya/projects", { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!controller.signal.aborted && Array.isArray(payload?.projects)) {
+          setProjects(payload.projects.map((item: { slug: string; name: string }) => ({ slug: item.slug, name: item.name })));
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     function handleKeys(event: KeyboardEvent) {
@@ -76,9 +92,17 @@ export function HomeNavigation() {
         <Link href={hrefFor("/home")} className="eye-logo" aria-label="Anitrya home">
           <span className="eye-logo-mark" />Anitrya
         </Link>
-        <span className="eye-pill eye-project-name" title={project ?? "Current workspace"}>
-          {project ? `Project · ${project}` : "Project workspace"}
-        </span>
+        <label className="eye-pill eye-project-name">
+          <span className="sr-only">Active project</span>
+          <select aria-label="Active project" value={activeProject ?? ""} onChange={(event) => {
+            const query = new URLSearchParams(searchParams.toString());
+            query.set("project", event.target.value);
+            router.push(`${pathname}?${query}`);
+          }}>
+            {!activeProject && <option value="">Project workspace</option>}
+            {projects.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}
+          </select>
+        </label>
         <div className="eye-top-spacer" />
         <div className="eye-segment" role="group" aria-label="Date range">
           {[7, 30, 90].map((days) => (

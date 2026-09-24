@@ -5,6 +5,8 @@ export type OverviewEvidenceSummary = {
   ga4LandingRows: number;
   gscQueryRows: number;
   gscPageRows: number;
+  googleAdsCampaignRows: number;
+  gbpLocationRows: number;
   failureReason: string | null;
 };
 
@@ -58,7 +60,7 @@ export async function getOverviewEvidenceSummary(input: {
   to: string;
 }): Promise<OverviewEvidenceSummary> {
   try {
-    const [ga4SourceRows, ga4LandingRows, gscQueryRows, gscPageRows] =
+    const [ga4SourceRows, ga4LandingRows, gscQueryRows, gscPageRows, googleAdsCampaignRows, gbpLocationRows] =
       await Promise.all([
         countRows({
           table: "ga4_source_daily",
@@ -88,6 +90,8 @@ export async function getOverviewEvidenceSummary(input: {
           from: input.from,
           to: input.to,
         }),
+        countRows({ table: "google_ads_campaign_daily", ...input }),
+        countRows({ table: "gbp_location_daily", ...input }),
       ]);
 
     return {
@@ -95,6 +99,8 @@ export async function getOverviewEvidenceSummary(input: {
       ga4LandingRows,
       gscQueryRows,
       gscPageRows,
+      googleAdsCampaignRows,
+      gbpLocationRows,
       failureReason: null,
     };
   } catch (error) {
@@ -103,6 +109,8 @@ export async function getOverviewEvidenceSummary(input: {
       ga4LandingRows: 0,
       gscQueryRows: 0,
       gscPageRows: 0,
+      googleAdsCampaignRows: 0,
+      gbpLocationRows: 0,
       failureReason: isDatabaseUnavailableError(error)
         ? "The database connection is currently unavailable, so normalized overview evidence could not be read."
         : error instanceof Error

@@ -33,7 +33,7 @@ for (let latitude = -76; latitude <= 80; latitude += 2.8) {
   }
 }
 
-export function SignalGlobe({ searchRows, trafficRows }: { searchRows: number; trafficRows: number }) {
+export function SignalGlobe({ searchRows, trafficRows, paidRows, localRows, projectLabel }: { searchRows: number; trafficRows: number; paidRows: number; localRows: number; projectLabel: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rotation = useRef({ longitude: 2.1, latitude: .44, zoom: 1 });
   const pointer = useRef<{ x: number; y: number } | null>(null);
@@ -149,7 +149,16 @@ export function SignalGlobe({ searchRows, trafficRows }: { searchRows: number; t
     context.arc(centerX, centerY, radius, 0, Math.PI * 2);
     context.stroke();
     context.shadowBlur = 0;
-  }, [layers]);
+    // Evidence rings show source coverage without claiming geographic signal locations.
+    [searchRows, trafficRows, paidRows, localRows].forEach((rows, index) => {
+      if (!rows) return;
+      context.strokeStyle = ["#5cf2ff", "#8b7bff", "#ffc861", "#4ade9d"][index];
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(centerX, centerY, radius * (.78 - index * .07), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, Math.log1p(rows) / 10));
+      context.stroke();
+    });
+  }, [layers, searchRows, trafficRows, paidRows, localRows]);
 
   useEffect(() => {
     let frame = 0;
@@ -167,11 +176,11 @@ export function SignalGlobe({ searchRows, trafficRows }: { searchRows: number; t
   }, [paint]);
 
   const counts: Record<Lens, number | null> = {
-    All: searchRows + trafficRows,
+    All: searchRows + trafficRows + paidRows + localRows,
     Search: searchRows,
     Traffic: trafficRows,
-    Paid: null,
-    Local: null,
+    Paid: paidRows,
+    Local: localRows,
   };
 
   return (
@@ -192,9 +201,9 @@ export function SignalGlobe({ searchRows, trafficRows }: { searchRows: number; t
         onWheel={(event) => { rotation.current.zoom = Math.max(.65, Math.min(1.45, rotation.current.zoom * (event.deltaY < 0 ? 1.08 : .92))); paint(performance.now()); }}
       />
       <div className="eye-globe-summary">
-        <span className="eye-overline">Market view / {lens}</span>
+        <span className="eye-overline">{projectLabel} / {lens}</span>
         <strong>{counts[lens] === null ? "Map data unavailable" : `${counts[lens]!.toLocaleString()} evidence rows`}</strong>
-        <span>Real project evidence · {lens === "Paid" || lens === "Local" ? "No map feed connected" : "No geocoded signals available"}</span>
+        <span>Selected project evidence · No geocoded signals available</span>
       </div>
       <div className="eye-globe-layers" role="group" aria-label="Globe layers">
         {(["grid", "scan", "rings"] as const).map((layer) => (

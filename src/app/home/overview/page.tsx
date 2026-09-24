@@ -2,6 +2,8 @@ import { requireSession } from "@/lib/auth";
 import { resolveDateRange } from "@/lib/intelligence/date-range";
 import { DateRangeToolbar } from "@/lib/intelligence/ui";
 import { resolveSelectedProject } from "@/lib/projects/resolve-selected-project";
+import { listWorkspaceProjects } from "@/lib/projects/resolve-selected-project";
+import { notFound, redirect } from "next/navigation";
 import {
   buildBehaviorHref,
   buildIntelligenceHref,
@@ -38,11 +40,17 @@ export default async function OverviewPage({ searchParams }: PageProps) {
   const params = (await searchParams) ?? {};
   const session = await requireSession();
 
-  const workspaceId = session.user?.workspaceId ?? params.workspace ?? null;
+  const workspaceId = session.user?.workspaceId ?? null;
+  if (!workspaceId) throw new Error("Missing workspace context on the current session.");
   const selectedProject = await resolveSelectedProject({
     workspaceId,
     projectSlug: params.project ?? null,
   });
+  if (!selectedProject) {
+    if (params.project) notFound();
+    redirect("/home/settings");
+  }
+  const projects = await listWorkspaceProjects(workspaceId);
 
   const dateRange = resolveDateRange({
     preset: params.preset,
@@ -50,8 +58,8 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     to: params.to,
   });
 
-  const projectId = selectedProject?.slug ?? "default-project";
-  const projectLabel = selectedProject?.name ?? params.projectName ?? "No project selected";
+  const projectId = selectedProject.slug;
+  const projectLabel = selectedProject.name;
 
   const navContext = {
     projectId,
@@ -65,23 +73,14 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     <main className="space-y-8">
       <ProjectContextSection
         activeProjectLabel={projectLabel}
-        activeProjectId={selectedProject ? projectId : null}
-        cards={[
-          {
-            label: "Clara AI",
-            ga4Label: "Clara Ai",
-            gscLabel: "sc-domain:justclara.ai",
-            href: "/home/overview?project=clara-ai",
-            selected: projectLabel === "Clara AI",
-          },
-          {
-            label: "ZT",
-            ga4Label: "ZenTrades",
-            gscLabel: "sc-domain:zentrades.pro",
-            href: "/home/overview?project=zt",
-            selected: projectId === "zt",
-          },
-        ]}
+        activeProjectId={projectId}
+        cards={projects.map((project) => ({
+          label: project.name,
+          ga4Label: project.ga4PropertyId,
+          gscLabel: project.gscSiteId,
+          href: `/home/overview?${new URLSearchParams({ project: project.slug, ...(params.from ? { from: params.from } : {}), ...(params.to ? { to: params.to } : {}) })}`,
+          selected: project.slug === projectId,
+        }))}
       />
 
       <DateRangeToolbar

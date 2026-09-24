@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { syncProjectSources } from "@/lib/integrations/client-provider-sync";
 
 type MappingOptionsResponse = {
   ga4Properties: Array<{
@@ -27,6 +29,7 @@ export function ProjectMappingPanel({
   currentGa4PropertyId,
   currentGscSiteId,
 }: Props) {
+  const router = useRouter();
   const [options, setOptions] = useState<MappingOptionsResponse>({
     ga4Properties: [],
     gscSites: [],
@@ -161,10 +164,9 @@ export function ProjectMappingPanel({
         throw new Error(payload?.error ?? "Failed to save project mapping.");
       }
 
-      setMessage({
-        type: "success",
-        text: "Project mapping saved. Run entity sync again for this project.",
-      });
+      const results = await syncProjectSources(projectSlug, ["ga4", "gsc"]);
+      setMessage({ type: results.ok ? "success" : "error", text: `Project mapping saved. ${results.message}` });
+      router.refresh();
     } catch (error) {
       setMessage({
         type: "error",

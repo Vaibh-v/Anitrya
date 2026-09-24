@@ -167,6 +167,7 @@ export default async function SettingsPage({
       {selectedProject ? (
         <>
           <ProjectMappingPanel
+            key={selectedProject.slug}
             projectSlug={selectedProject.slug}
             projectLabel={selectedProject.name}
             currentGa4PropertyId={selectedProject.ga4PropertyId}
@@ -174,11 +175,13 @@ export default async function SettingsPage({
           />
 
           <GbpLocationMappingPanel
+            key={selectedProject.slug}
             projectSlug={selectedProject.slug}
             projectLabel={selectedProject.name}
           />
 
           <GoogleAdsAccountMappingPanel
+            key={selectedProject.slug}
             projectSlug={selectedProject.slug}
             projectLabel={selectedProject.name}
           />
@@ -188,6 +191,7 @@ export default async function SettingsPage({
           ) : null}
 
           <EntitySyncPanel
+            key={selectedProject.slug}
             projectSlug={selectedProject.slug}
             projectLabel={selectedProject.name}
             initialFrom={from}

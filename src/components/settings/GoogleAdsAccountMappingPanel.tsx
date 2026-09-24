@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { syncProjectSources } from "@/lib/integrations/client-provider-sync";
 
 type AdsAccount = {
   id: string;
@@ -29,6 +31,7 @@ export function GoogleAdsAccountMappingPanel({
   projectSlug: string;
   projectLabel: string;
 }) {
+  const router = useRouter();
   const [accounts, setAccounts] = useState<AdsAccount[]>([]);
   const [savedMapping, setSavedMapping] = useState<SavedMapping | null>(null);
   const [customerName, setCustomerName] = useState("");
@@ -86,7 +89,10 @@ export function GoogleAdsAccountMappingPanel({
 
       setSavedMapping(payload.mapping);
       setError(false);
-      setMessage("Google Ads account mapping saved. Run project sync to collect campaign data.");
+      const result = await syncProjectSources(projectSlug, ["google-ads"]);
+      setError(!result.ok);
+      setMessage(`Google Ads mapping saved. ${result.message}`);
+      router.refresh();
     } catch (caught) {
       setError(true);
       setMessage(caught instanceof Error ? caught.message : "Could not save Google Ads mapping.");
@@ -144,6 +150,20 @@ export function GoogleAdsAccountMappingPanel({
           {saving ? "Saving..." : "Save Ads mapping"}
         </button>
       </div>
+
+      {savedMapping && (
+        <button type="button" disabled={saving} onClick={async () => {
+          setSaving(true);
+          try {
+            const result = await syncProjectSources(projectSlug, ["google-ads"]);
+            setError(!result.ok);
+            setMessage(result.message);
+            router.refresh();
+          } finally { setSaving(false); }
+        }} className="mt-4 rounded-[14px] border border-white/20 px-4 py-2 text-sm text-white disabled:opacity-60">
+          {saving ? "Syncing..." : "Sync Ads now"}
+        </button>
+      )}
 
       {message ? (
         <p className={`mt-5 rounded-[18px] border px-4 py-3 text-sm ${error ? "border-rose-400/25 bg-rose-400/10 text-rose-100" : "border-white/10 bg-white/5 text-white/70"}`}>

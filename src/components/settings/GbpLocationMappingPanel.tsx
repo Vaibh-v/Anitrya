@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { syncProjectSources } from "@/lib/integrations/client-provider-sync";
 
 type GbpLocationOption = {
   id: string;
@@ -49,6 +51,7 @@ export function GbpLocationMappingPanel({
   projectSlug,
   projectLabel,
 }: Props) {
+  const router = useRouter();
   const [locations, setLocations] = useState<GbpLocationOption[]>([]);
   const [savedMapping, setSavedMapping] = useState<GbpSavedMapping | null>(null);
   const [locationName, setLocationName] = useState("");
@@ -141,10 +144,9 @@ export function GbpLocationMappingPanel({
       }
 
       setSavedMapping(payload.mapping);
-      setMessage({
-        type: "success",
-        text: "Business Profile location mapping saved. Readiness will update on refresh.",
-      });
+      const result = await syncProjectSources(projectSlug, ["gbp"]);
+      setMessage({ type: result.ok ? "success" : "error", text: `Business Profile mapping saved. ${result.message}` });
+      router.refresh();
     } catch (error) {
       setMessage({
         type: "error",
@@ -225,6 +227,19 @@ export function GbpLocationMappingPanel({
           {saving ? "Saving..." : "Save GBP mapping"}
         </button>
       </div>
+
+      {savedMapping && (
+        <button type="button" disabled={saving} onClick={async () => {
+          setSaving(true);
+          try {
+            const result = await syncProjectSources(projectSlug, ["gbp"]);
+            setMessage({ type: result.ok ? "success" : "error", text: result.message });
+            router.refresh();
+          } finally { setSaving(false); }
+        }} className="mt-4 rounded-[14px] border border-white/20 px-4 py-2 text-sm text-white disabled:opacity-60">
+          {saving ? "Syncing..." : "Sync Business Profile now"}
+        </button>
+      )}
 
       <div
         className={`mt-5 rounded-[18px] border px-4 py-3 text-[14px] leading-7 ${

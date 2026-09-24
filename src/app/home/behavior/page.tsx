@@ -33,7 +33,7 @@ export default async function BehaviorPage(props: PageProps) {
   const defaultFrom = formatDate(shiftDate(today, -29));
   const defaultTo = formatDate(today);
 
-  const projectRef = searchParams.project ?? "zt";
+  const projectRef = searchParams.project ?? null;
   const from = searchParams.from ?? defaultFrom;
   const to = searchParams.to ?? defaultTo;
 

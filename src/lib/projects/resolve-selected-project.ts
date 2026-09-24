@@ -26,8 +26,11 @@ export async function resolveSelectedProject(input: {
 
   if (!projects.length) return null;
 
-  const selected =
-    projects.find((project) => project.slug === input.projectSlug) ?? projects[0];
+  const selected = input.projectSlug
+    ? projects.find((project) => project.slug === input.projectSlug)
+    : projects[0];
+
+  if (!selected) return null;
 
   return {
     id: selected.id,
