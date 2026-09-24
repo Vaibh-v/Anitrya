@@ -58,28 +58,24 @@ export async function getLatestGbpLocationMapping(input: {
   workspaceId: string;
   projectSlug: string;
 }): Promise<GbpLocationMappingRecord | null> {
-  const runs = await prisma.syncRun.findMany({
+  const run = await prisma.syncRun.findFirst({
     where: {
       workspaceId: input.workspaceId,
       source: SyncSource.GOOGLE_GBP,
+      AND: [
+        { metadata: { path: ["integrationStatus"], equals: GBP_MAPPING_STATUS } },
+        { metadata: { path: ["projectSlug"], equals: input.projectSlug } },
+      ],
     },
     orderBy: {
       startedAt: "desc",
     },
-    take: 40,
     select: {
       metadata: true,
     },
   });
 
-  for (const run of runs) {
-    const mapping = readGbpLocationMappingFromMetadata(run.metadata);
-    if (mapping?.projectSlug === input.projectSlug) {
-      return mapping;
-    }
-  }
-
-  return null;
+  return readGbpLocationMappingFromMetadata(run?.metadata);
 }
 
 export async function recordGbpLocationMapping(input: {

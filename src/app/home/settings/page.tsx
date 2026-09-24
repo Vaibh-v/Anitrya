@@ -8,6 +8,7 @@ import { listSyncHealthRuns } from "@/lib/sync/sync-health-history";
 import { IntegrationReadinessPanel } from "@/components/settings/IntegrationReadinessPanel";
 import { buildProjectIntegrationHealth } from "@/lib/integrations/project-integration-health";
 import { GbpLocationMappingPanel } from "@/components/settings/GbpLocationMappingPanel";
+import { GoogleAdsAccountMappingPanel } from "@/components/settings/GoogleAdsAccountMappingPanel";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -173,6 +174,11 @@ export default async function SettingsPage({
           />
 
           <GbpLocationMappingPanel
+            projectSlug={selectedProject.slug}
+            projectLabel={selectedProject.name}
+          />
+
+          <GoogleAdsAccountMappingPanel
             projectSlug={selectedProject.slug}
             projectLabel={selectedProject.name}
           />

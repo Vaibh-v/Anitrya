@@ -11,8 +11,14 @@ import {
   getProviderCapabilityMatrix,
   PROVIDER_REGISTRY,
 } from "@/lib/integrations/provider-registry";
-import { readGoogleAdsAccountMappingFromMetadata } from "@/lib/integrations/google/ads/account-mapping-ledger";
-import { readGbpLocationMappingFromMetadata } from "@/lib/integrations/google/gbp/location-mapping-ledger";
+import {
+  getLatestGoogleAdsAccountMapping,
+  readGoogleAdsAccountMappingFromMetadata,
+} from "@/lib/integrations/google/ads/account-mapping-ledger";
+import {
+  getLatestGbpLocationMapping,
+  readGbpLocationMappingFromMetadata,
+} from "@/lib/integrations/google/gbp/location-mapping-ledger";
 import type {
   ProviderHealthRecord,
   ProviderHealthState,
@@ -90,10 +96,8 @@ function hasProviderConnection(input: {
   tokens: WorkspaceTokenSummary[];
   tokenKeys: Set<IntegrationKey>;
 }) {
-  if (input.tokenKeys.has(input.providerKey)) return true;
-
   const requiredScopes = PROVIDER_REQUIRED_SCOPES[input.providerKey] ?? [];
-  if (requiredScopes.length === 0) return false;
+  if (requiredScopes.length === 0) return input.tokenKeys.has(input.providerKey);
 
   return input.tokens.some((token) =>
     tokenHasRequiredScopes(token, requiredScopes)
@@ -147,40 +151,6 @@ function findLatestSyncRun(input: {
         metadataMatchesProject(run.metadata, input.projectId)
     ) ?? null
   );
-}
-
-function findLatestGoogleAdsMapping(input: {
-  projectId?: string | null;
-  runs: WorkspaceSyncRunSummary[];
-}) {
-  for (const run of input.runs) {
-    if (run.source !== "GOOGLE_ADS") continue;
-
-    const mapping = readGoogleAdsAccountMappingFromMetadata(run.metadata);
-
-    if (mapping && metadataMatchesProject(run.metadata, input.projectId)) {
-      return mapping;
-    }
-  }
-
-  return null;
-}
-
-function findLatestGbpMapping(input: {
-  projectId?: string | null;
-  runs: WorkspaceSyncRunSummary[];
-}) {
-  for (const run of input.runs) {
-    if (run.source !== "GOOGLE_GBP") continue;
-
-    const mapping = readGbpLocationMappingFromMetadata(run.metadata);
-
-    if (mapping && metadataMatchesProject(run.metadata, input.projectId)) {
-      return mapping;
-    }
-  }
-
-  return null;
 }
 
 function normalizeSyncStatus(
@@ -240,7 +210,8 @@ function hasProjectMapping(input: {
   providerKey: IntegrationKey;
   projectId?: string | null;
   mapping: ProjectMappingSnapshot | null;
-  runs: WorkspaceSyncRunSummary[];
+  adsMapped: boolean;
+  gbpMapped: boolean;
 }) {
   if (!input.projectId) return false;
 
@@ -253,21 +224,11 @@ function hasProjectMapping(input: {
   }
 
   if (input.providerKey === "google_ads") {
-    return Boolean(
-      findLatestGoogleAdsMapping({
-        projectId: input.projectId,
-        runs: input.runs,
-      })
-    );
+    return input.adsMapped;
   }
 
   if (input.providerKey === "google_business_profile") {
-    return Boolean(
-      findLatestGbpMapping({
-        projectId: input.projectId,
-        runs: input.runs,
-      })
-    );
+    return input.gbpMapped;
   }
 
   return false;
@@ -306,11 +267,18 @@ export async function buildProviderHealthSummary(
           OR: [{ id: projectId }, { slug: projectId }, { name: projectId }],
         },
         select: {
+          slug: true,
           ga4PropertyId: true,
           gscSiteId: true,
         },
       })
     : null;
+  const [adsMapping, gbpMapping] = projectMapping
+    ? await Promise.all([
+        getLatestGoogleAdsAccountMapping({ workspaceId, projectSlug: projectMapping.slug }),
+        getLatestGbpLocationMapping({ workspaceId, projectSlug: projectMapping.slug }),
+      ])
+    : [null, null];
 
   const tokenKeys = new Set<IntegrationKey>();
   for (const token of tokens) {
@@ -330,18 +298,27 @@ export async function buildProviderHealthSummary(
           providerKey: provider.key,
           projectId,
           mapping: projectMapping,
-          runs: syncRuns,
+          adsMapped: Boolean(adsMapping),
+          gbpMapped: Boolean(gbpMapping),
         })
       : true;
-    const syncCapable = connected && capabilities.canSync.enabled && mapped;
+    const latestSyncRun = findLatestSyncRun({
+      providerKey: provider.key,
+      projectId,
+      runs: syncRuns,
+    });
+    const syncCapable =
+      connected && capabilities.canSync.enabled && mapped &&
+      providerSpecificBlockers(provider.key).length === 0;
     const evidenceReady =
       connected &&
       mapped &&
       capabilities.canExportEvidence.enabled &&
       (provider.key === "google_ga4" ||
         provider.key === "google_gsc" ||
-        provider.key === "google_ads" ||
-        provider.key === "google_business_profile");
+        ((provider.key === "google_ads" ||
+          provider.key === "google_business_profile") &&
+          latestSyncRun?.status === "SUCCESS" && latestSyncRun.rowsSynced > 0));
     const intelligenceReady =
       connected && mapped && capabilities.canPowerIntelligence.enabled;
 
@@ -361,11 +338,6 @@ export async function buildProviderHealthSummary(
         ? ["Provider is connected conceptually but sync is not yet enabled in the product."]
         : []),
     ].filter((blocker, index, array) => array.indexOf(blocker) === index);
-    const latestSyncRun = findLatestSyncRun({
-      providerKey: provider.key,
-      projectId,
-      runs: syncRuns,
-    });
     const missingRequirements = buildMissingRequirements({
       connected,
       mapped,

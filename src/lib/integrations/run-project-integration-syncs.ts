@@ -1,5 +1,6 @@
 import type {
   IntegrationSyncContext,
+  IntegrationSyncProvider,
   IntegrationSyncResult,
 } from "@/lib/integrations/sync-contracts";
 import { recordIntegrationSyncResult } from "@/lib/integrations/sync-audit";
@@ -7,10 +8,13 @@ import { integrationSyncRegistry } from "@/lib/integrations/sync-registry";
 
 export async function runProjectIntegrationSyncs(
   context: IntegrationSyncContext,
+  provider?: IntegrationSyncProvider,
 ): Promise<IntegrationSyncResult[]> {
   const results: IntegrationSyncResult[] = [];
 
-  for (const runner of integrationSyncRegistry) {
+  for (const runner of integrationSyncRegistry.filter(
+    (candidate) => !provider || candidate.provider === provider,
+  )) {
     if (!runner.canRun(context)) {
       const result: IntegrationSyncResult = {
         provider: runner.provider,

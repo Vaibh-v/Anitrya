@@ -61,13 +61,10 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
     powersSettings: true,
     powersSync: true,
     powersEvidence: true,
-    powersIntelligence: true,
+    powersIntelligence: false,
     requiresProjectMapping: true,
     requiresWorkspaceToken: true,
     evidenceTargets: ["intelligence", "overview"],
-    blockedByDefault: [
-      "Google Ads sync requires a saved project-to-customer mapping and a server-side developer token.",
-    ],
   },
   {
     key: "google_trends",
@@ -93,7 +90,7 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
     powersSettings: true,
     powersSync: true,
     powersEvidence: true,
-    powersIntelligence: true,
+    powersIntelligence: false,
     requiresProjectMapping: true,
     requiresWorkspaceToken: true,
     evidenceTargets: ["intelligence", "overview"],

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ensureNormalizedEvidenceTables } from "@/lib/evidence/ensure-normalized-evidence-tables";
+import { buildGbpPerformanceUrl } from "@/lib/integrations/google/gbp/performance-request";
 
 export const GBP_LOCATION_DAILY_METRICS = [
   "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
@@ -68,24 +69,6 @@ function escapeSql(value: string): string {
   return value.replace(/'/g, "''");
 }
 
-function parseIsoDate(value: string): GbpDate {
-  const [year, month, day] = value.split("-").map(Number);
-
-  return { year, month, day };
-}
-
-function appendDateParams(
-  params: URLSearchParams,
-  prefix: "start_date" | "end_date",
-  value: string,
-) {
-  const date = parseIsoDate(value);
-
-  params.append(`daily_range.${prefix}.year`, String(date.year));
-  params.append(`daily_range.${prefix}.month`, String(date.month));
-  params.append(`daily_range.${prefix}.day`, String(date.day));
-}
-
 function normalizeLocationName(value: string): string {
   const cleaned = value.trim();
   return cleaned.startsWith("locations/") ? cleaned : `locations/${cleaned}`;
@@ -125,19 +108,13 @@ function valuesForSeries(series: GbpDailyMetricTimeSeries): GbpDatedValue[] {
 
 export async function fetchGbpLocationDaily(input: Input): Promise<number> {
   const locationName = normalizeLocationName(input.locationName);
-  const params = new URLSearchParams();
-
-  for (const metric of GBP_LOCATION_DAILY_METRICS) {
-    params.append("dailyMetrics", metric);
-  }
-
-  appendDateParams(params, "start_date", input.from);
-  appendDateParams(params, "end_date", input.to);
-
   const response = await fetch(
-    `https://businessprofileperformance.googleapis.com/v1/${encodeURI(
+    buildGbpPerformanceUrl({
       locationName,
-    )}:fetchMultiDailyMetricsTimeSeries?${params.toString()}`,
+      from: input.from,
+      to: input.to,
+      metrics: GBP_LOCATION_DAILY_METRICS,
+    }),
     {
       headers: {
         Authorization: `Bearer ${input.accessToken}`,
@@ -155,15 +132,6 @@ export async function fetchGbpLocationDaily(input: Input): Promise<number> {
   }
 
   await ensureNormalizedEvidenceTables();
-
-  await prisma.$executeRawUnsafe(`
-    DELETE FROM gbp_location_daily
-    WHERE workspace_id = '${escapeSql(input.workspaceId)}'
-      AND project_slug = '${escapeSql(input.projectSlug)}'
-      AND location_name = '${escapeSql(locationName)}'
-      AND date >= DATE '${escapeSql(input.from)}'
-      AND date <= DATE '${escapeSql(input.to)}'
-  `);
 
   const normalizedRows = metricGroups(payload)
     .flatMap(seriesForGroup)
@@ -190,8 +158,18 @@ export async function fetchGbpLocationDaily(input: Input): Promise<number> {
     })
     .filter((value): value is string => Boolean(value));
 
-  if (normalizedRows.length > 0) {
-    await prisma.$executeRawUnsafe(`
+  await prisma.$transaction(async (transaction) => {
+    await transaction.$executeRawUnsafe(`
+      DELETE FROM gbp_location_daily
+      WHERE workspace_id = '${escapeSql(input.workspaceId)}'
+        AND project_slug = '${escapeSql(input.projectSlug)}'
+        AND location_name = '${escapeSql(locationName)}'
+        AND date >= DATE '${escapeSql(input.from)}'
+        AND date <= DATE '${escapeSql(input.to)}'
+    `);
+
+    if (normalizedRows.length > 0) {
+      await transaction.$executeRawUnsafe(`
       INSERT INTO gbp_location_daily (
         workspace_id,
         project_slug,
@@ -204,7 +182,8 @@ export async function fetchGbpLocationDaily(input: Input): Promise<number> {
       )
       VALUES ${normalizedRows.join(",\n")}
     `);
-  }
+    }
+  });
 
   return normalizedRows.length;
 }

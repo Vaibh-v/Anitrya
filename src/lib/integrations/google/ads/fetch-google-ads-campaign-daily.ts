@@ -146,20 +146,13 @@ export async function fetchGoogleAdsCampaignDaily(input: Input): Promise<number>
     );
   }
 
+  if (!Array.isArray(payload)) {
+    throw new Error("Google Ads campaign sync returned an unexpected response.");
+  }
+
   await ensureNormalizedEvidenceTables();
 
-  await prisma.$executeRawUnsafe(`
-    DELETE FROM google_ads_campaign_daily
-    WHERE workspace_id = '${escapeSql(input.workspaceId)}'
-      AND project_slug = '${escapeSql(input.projectSlug)}'
-      AND customer_id = '${escapeSql(customerId)}'
-      AND date >= DATE '${escapeSql(input.from)}'
-      AND date <= DATE '${escapeSql(input.to)}'
-  `);
-
-  const chunks = Array.isArray(payload) ? payload : [];
-
-  const normalizedRows = chunks
+  const normalizedRows = payload
     .flatMap((chunk) => chunk.results ?? [])
     .map((row) => {
       const campaign = row.campaign;
@@ -188,8 +181,18 @@ export async function fetchGoogleAdsCampaignDaily(input: Input): Promise<number>
     })
     .filter((value): value is string => Boolean(value));
 
-  if (normalizedRows.length > 0) {
-    await prisma.$executeRawUnsafe(`
+  await prisma.$transaction(async (transaction) => {
+    await transaction.$executeRawUnsafe(`
+      DELETE FROM google_ads_campaign_daily
+      WHERE workspace_id = '${escapeSql(input.workspaceId)}'
+        AND project_slug = '${escapeSql(input.projectSlug)}'
+        AND customer_id = '${escapeSql(customerId)}'
+        AND date >= DATE '${escapeSql(input.from)}'
+        AND date <= DATE '${escapeSql(input.to)}'
+    `);
+
+    if (normalizedRows.length > 0) {
+      await transaction.$executeRawUnsafe(`
       INSERT INTO google_ads_campaign_daily (
         workspace_id,
         project_slug,
@@ -208,7 +211,8 @@ export async function fetchGoogleAdsCampaignDaily(input: Input): Promise<number>
       )
       VALUES ${normalizedRows.join(",\n")}
     `);
-  }
+    }
+  });
 
   return normalizedRows.length;
 }

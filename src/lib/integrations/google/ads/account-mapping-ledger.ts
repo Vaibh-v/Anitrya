@@ -56,28 +56,24 @@ export async function getLatestGoogleAdsAccountMapping(input: {
   workspaceId: string;
   projectSlug: string;
 }): Promise<GoogleAdsAccountMappingRecord | null> {
-  const runs = await prisma.syncRun.findMany({
+  const run = await prisma.syncRun.findFirst({
     where: {
       workspaceId: input.workspaceId,
       source: SyncSource.GOOGLE_ADS,
+      AND: [
+        { metadata: { path: ["integrationStatus"], equals: GOOGLE_ADS_MAPPING_STATUS } },
+        { metadata: { path: ["projectSlug"], equals: input.projectSlug } },
+      ],
     },
     orderBy: {
       startedAt: "desc",
     },
-    take: 40,
     select: {
       metadata: true,
     },
   });
 
-  for (const run of runs) {
-    const mapping = readGoogleAdsAccountMappingFromMetadata(run.metadata);
-    if (mapping?.projectSlug === input.projectSlug) {
-      return mapping;
-    }
-  }
-
-  return null;
+  return readGoogleAdsAccountMappingFromMetadata(run?.metadata);
 }
 
 export async function recordGoogleAdsAccountMapping(input: {
