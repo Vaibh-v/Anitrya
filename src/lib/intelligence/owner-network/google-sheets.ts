@@ -212,3 +212,62 @@ export async function upsertRowByKey(args: {
 
   await clearAndWriteSheet(spreadsheetId, tabName, [headerRow, ...bodyRows]);
 }
+/**
+ * Batched helpers (added for the owner evidence mirror). They keep the number
+ * of Sheets API calls per export constant (~4) instead of 4–5 per tab, which
+ * matters for the 60 requests/minute/user Sheets quota.
+ */
+export async function ensureTabsExist(spreadsheetId: string, tabNames: string[]) {
+  if (tabNames.length === 0) return;
+  await ensureSpreadsheetTabs({ spreadsheetId, tabNames });
+}
+
+export async function readManySheetValues(
+  spreadsheetId: string,
+  tabNames: string[],
+): Promise<Record<string, string[][]>> {
+  const result: Record<string, string[][]> = {};
+  if (tabNames.length === 0) return result;
+
+  const sheets = await getSheetsClient();
+  const response = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId,
+    ranges: tabNames.map((tabName) => `${tabName}!A:ZZ`),
+  });
+
+  (response.data.valueRanges ?? []).forEach((range, index) => {
+    const tabName = tabNames[index];
+    if (!tabName) return;
+    result[tabName] = (range.values ?? []).map((row) =>
+      row.map((value) => String(value)),
+    );
+  });
+
+  return result;
+}
+
+export async function clearAndWriteManySheets(
+  spreadsheetId: string,
+  tabs: Array<{ tabName: string; rows: string[][] }>,
+  valueInputOption: "RAW" | "USER_ENTERED" = "RAW",
+) {
+  if (tabs.length === 0) return;
+
+  const sheets = await getSheetsClient();
+
+  await sheets.spreadsheets.values.batchClear({
+    spreadsheetId,
+    requestBody: { ranges: tabs.map((tab) => `${tab.tabName}!A:ZZ`) },
+  });
+
+  const data = tabs
+    .filter((tab) => tab.rows.length > 0)
+    .map((tab) => ({ range: `${tab.tabName}!A1`, values: tab.rows }));
+
+  if (data.length === 0) return;
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption, data },
+  });
+}

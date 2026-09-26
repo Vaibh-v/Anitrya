@@ -7,6 +7,7 @@ export type EvidenceTablePresence = {
   gscPageDaily: boolean;
   googleAdsCampaignDaily: boolean;
   gbpLocationDaily: boolean;
+  semrushEvidenceSnapshot: boolean;
 };
 
 async function tableExists(tableName: string): Promise<boolean> {
@@ -34,6 +35,7 @@ export async function getEvidenceTablePresence(): Promise<EvidenceTablePresence>
     gscPageDaily,
     googleAdsCampaignDaily,
     gbpLocationDaily,
+    semrushEvidenceSnapshot,
   ] = await Promise.all([
     tableExists("ga4_source_daily"),
     tableExists("ga4_landing_page_daily"),
@@ -41,6 +43,7 @@ export async function getEvidenceTablePresence(): Promise<EvidenceTablePresence>
     tableExists("gsc_page_daily"),
     tableExists("google_ads_campaign_daily"),
     tableExists("gbp_location_daily"),
+    tableExists("semrush_evidence_snapshot"),
   ]);
 
   return {
@@ -50,5 +53,6 @@ export async function getEvidenceTablePresence(): Promise<EvidenceTablePresence>
     gscPageDaily,
     googleAdsCampaignDaily,
     gbpLocationDaily,
+    semrushEvidenceSnapshot,
   };
 }

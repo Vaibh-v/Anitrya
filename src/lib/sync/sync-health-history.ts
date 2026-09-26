@@ -54,6 +54,13 @@ export type SyncHealthRunView = {
   createdAt: Date;
 };
 
+// A skipped source flagged severity "info" is an optional provider the
+// workspace has not adopted (e.g. no SEMrush key). It stays visible in
+// `sources` but must not downgrade run health or generate next actions.
+function isInformationalSkip(source: IntegrationSyncResult) {
+  return source.status === "skipped" && source.details?.severity === "info";
+}
+
 function normalizeState(input: SyncHealthRunInput): SyncHealthState {
   if (
     input.sources.some((source) => source.status === "error") ||
@@ -65,7 +72,9 @@ function normalizeState(input: SyncHealthRunInput): SyncHealthState {
   }
 
   if (
-    input.sources.some((source) => source.status === "skipped") ||
+    input.sources.some(
+      (source) => source.status === "skipped" && !isInformationalSkip(source),
+    ) ||
     input.ownerSheet.status === "skipped" ||
     input.intelligence?.exportStatus === "skipped"
   ) {
@@ -83,7 +92,7 @@ function buildNextActions(input: SyncHealthRunInput): string[] {
       actions.add(`Fix ${source.provider}: ${source.reason}`);
     }
 
-    if (source.status === "skipped") {
+    if (source.status === "skipped" && !isInformationalSkip(source)) {
       actions.add(`Complete ${source.provider} mapping or access: ${source.reason}`);
     }
   }

@@ -143,17 +143,26 @@ export const PROVIDER_REGISTRY: ProviderRegistryItem[] = [
   {
     key: "semrush",
     label: "SEMrush",
+    // Stays "preserved" so it reads as optional until a key is connected;
+    // sync/normalization/export are enabled and gated by semrush-readiness
+    // (encrypted API key + project domain mapping + evidence storage).
     lifecycle: "preserved",
     connectionMode: "api_key",
-    capabilities: ["sync", "competitive_context", "reasoning_input", "export_support"],
+    capabilities: [
+      "sync",
+      "normalization",
+      "entity_mapping",
+      "competitive_context",
+      "reasoning_input",
+      "export_support",
+    ],
     powersSettings: true,
-    powersSync: false,
-    powersEvidence: false,
+    powersSync: true,
+    powersEvidence: true,
     powersIntelligence: true,
     requiresProjectMapping: true,
-    requiresWorkspaceToken: false,
+    requiresWorkspaceToken: true,
     evidenceTargets: ["seo", "intelligence"],
-    blockedByDefault: ["Competitive SEO layer is preserved but not yet connected to normalization."],
   },
   {
     key: "birdeye",

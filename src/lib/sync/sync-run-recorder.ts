@@ -15,6 +15,7 @@ const SOURCE_MAP: Record<string, string> = {
   GOOGLE_GSC: "GOOGLE_GSC",
   GOOGLE_ADS: "GOOGLE_ADS",
   GOOGLE_GBP: "GOOGLE_GBP",
+  SEMRUSH: "SEMRUSH",
 };
 
 const STATUS_MAP: Record<SyncRunRecorderInput["status"], string> = {

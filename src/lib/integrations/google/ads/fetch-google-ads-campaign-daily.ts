@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ensureNormalizedEvidenceTables } from "@/lib/evidence/ensure-normalized-evidence-tables";
 import { GOOGLE_ADS_DEVELOPER_TOKEN_ENV } from "@/lib/integrations/google/ads/discovery-contract";
+import { assertIsoDateRange, readGoogleJson } from "@/lib/integrations/google/read-google-json";
 
 const DEFAULT_GOOGLE_ADS_API_VERSION = "v25";
 const GOOGLE_ADS_API_BASE_URL = "https://googleads.googleapis.com";
@@ -113,6 +114,8 @@ export async function fetchGoogleAdsCampaignDaily(input: Input): Promise<number>
     );
   }
 
+  assertIsoDateRange(input.from, input.to, "Google Ads campaign sync");
+
   const customerId = normalizedCustomerId(input.customerId);
   const loginCustomerId = normalizedLoginCustomerId(input.loginCustomerId);
   const response = await fetch(
@@ -131,9 +134,9 @@ export async function fetchGoogleAdsCampaignDaily(input: Input): Promise<number>
     },
   );
 
-  const payload = (await response.json()) as
-    | GoogleAdsSearchStreamChunk[]
-    | GoogleAdsErrorPayload;
+  const payload = await readGoogleJson<
+    GoogleAdsSearchStreamChunk[] | GoogleAdsErrorPayload
+  >(response, "Google Ads campaign sync");
 
   if (!response.ok) {
     const message = Array.isArray(payload)
@@ -212,7 +215,7 @@ export async function fetchGoogleAdsCampaignDaily(input: Input): Promise<number>
       VALUES ${normalizedRows.join(",\n")}
     `);
     }
-  });
+  }, { timeout: 30_000, maxWait: 10_000 });
 
   return normalizedRows.length;
 }

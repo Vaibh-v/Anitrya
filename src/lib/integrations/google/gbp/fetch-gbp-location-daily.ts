@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ensureNormalizedEvidenceTables } from "@/lib/evidence/ensure-normalized-evidence-tables";
 import { buildGbpPerformanceUrl } from "@/lib/integrations/google/gbp/performance-request";
+import { assertIsoDateRange, readGoogleJson } from "@/lib/integrations/google/read-google-json";
 
 export const GBP_LOCATION_DAILY_METRICS = [
   "BUSINESS_IMPRESSIONS_DESKTOP_MAPS",
@@ -106,7 +107,16 @@ function valuesForSeries(series: GbpDailyMetricTimeSeries): GbpDatedValue[] {
   return timeSeries?.datedValues ?? timeSeries?.dated_values ?? [];
 }
 
-export async function fetchGbpLocationDaily(input: Input): Promise<number> {
+export async function fetchGbpLocationDaily(rawInput: Input): Promise<number> {
+  assertIsoDateRange(rawInput.from, rawInput.to, "Google Business Profile sync");
+
+  // The Performance API only has data up to (roughly) yesterday; never ask for
+  // or delete rows beyond today, so an end date in the future cannot wipe or
+  // misreport existing evidence.
+  const today = new Date().toISOString().slice(0, 10);
+  const input = { ...rawInput, to: rawInput.to > today ? today : rawInput.to };
+  if (input.from > input.to) return 0;
+
   const locationName = normalizeLocationName(input.locationName);
   const response = await fetch(
     buildGbpPerformanceUrl({
@@ -122,7 +132,10 @@ export async function fetchGbpLocationDaily(input: Input): Promise<number> {
     },
   );
 
-  const payload = (await response.json()) as GbpPerformanceResponse;
+  const payload = await readGoogleJson<GbpPerformanceResponse>(
+    response,
+    "Google Business Profile performance sync",
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -183,7 +196,7 @@ export async function fetchGbpLocationDaily(input: Input): Promise<number> {
       VALUES ${normalizedRows.join(",\n")}
     `);
     }
-  });
+  }, { timeout: 30_000, maxWait: 10_000 });
 
   return normalizedRows.length;
 }

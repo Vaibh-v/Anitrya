@@ -24,6 +24,8 @@ type OwnerSheetResult =
       summary: string;
       label: string;
       detail: string;
+      evidenceTabs?: Array<{ tab: string; status: string; rows: number; truncated: boolean; error?: string }>;
+      semrush?: { status: string };
     }
   | {
       status: "skipped";
@@ -164,14 +166,34 @@ export async function POST(req: NextRequest) {
           results,
         });
 
+        const evidenceTabs = ownerExport.evidence.tabs;
+        const tabSummary = evidenceTabs
+          .map((tab) => `${tab.tab}=${tab.status === "written" ? tab.rows : tab.status}${tab.truncated ? "+" : ""}`)
+          .join(", ");
+
         ownerSheet = {
           status: "mirrored",
           masterSpreadsheetId: ownerExport.masterSpreadsheetId,
           customerSpreadsheetId: ownerExport.customerSheetId,
-          summary: `OWNER_SHEET: mirrored to ${ownerExport.customerSheetId}`,
-          label: "Owner export mirrored",
+          summary: `OWNER_SHEET: mirrored to ${ownerExport.customerSheetId} (${tabSummary}${
+            ownerExport.semrush.status === "written" ? ", semrush_evidence" : ""
+          })`,
+          label:
+            ownerExport.evidence.status === "written"
+              ? "Owner export mirrored"
+              : "Owner export mirrored with warnings",
           detail:
-            "Normalized project evidence was mirrored into the owner master workbook and the assigned customer workbook.",
+            ownerExport.evidence.status === "written"
+              ? "Project registry was updated in the owner master workbook and normalized evidence rows were written to the assigned customer workbook."
+              : `Project registry was updated, but some evidence tabs were not written: ${
+                  ownerExport.evidence.error ??
+                  evidenceTabs
+                    .filter((tab) => tab.status !== "written")
+                    .map((tab) => `${tab.tab} (${tab.error ?? tab.status})`)
+                    .join("; ")
+                }`,
+          evidenceTabs,
+          semrush: { status: ownerExport.semrush.status },
         };
       } catch (ownerExportError) {
         console.error("OWNER_EXPORT_FAILED", ownerExportError);

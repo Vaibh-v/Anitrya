@@ -1,3 +1,13 @@
+// Kept dependency-free (no "@/" imports) so it stays unit-testable in isolation.
+async function readGoogleJson<T>(response: Response, label: string): Promise<T> {
+  const body = await response.text();
+  try {
+    return (body ? JSON.parse(body) : {}) as T;
+  } catch {
+    throw new Error(`${label} returned a non-JSON response (HTTP ${response.status}).`);
+  }
+}
+
 export type AccessibleGoogleAdsCustomer = {
   customerId: string;
   displayName: string;
@@ -40,7 +50,10 @@ export async function listAccessibleGoogleAdsCustomers(input: {
     `${ADS_API}/${input.apiVersion}/customers:listAccessibleCustomers`,
     { headers },
   );
-  const payload = (await response.json()) as AccessibleCustomersResponse;
+  const payload = await readGoogleJson<AccessibleCustomersResponse>(
+    response,
+    "Google Ads account discovery",
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -77,11 +90,14 @@ export async function listAccessibleGoogleAdsCustomers(input: {
           },
           body: JSON.stringify({
             query:
-              "SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager FROM customer_client",
+              "SELECT customer_client.id, customer_client.descriptive_name, customer_client.manager, customer_client.status FROM customer_client WHERE customer_client.status = 'ENABLED'",
           }),
         },
       );
-      const chunks = (await hierarchyResponse.json()) as CustomerClientChunk[] | { error?: { message?: string } };
+      const chunks = await readGoogleJson<CustomerClientChunk[] | { error?: { message?: string } }>(
+        hierarchyResponse,
+        "Google Ads account hierarchy",
+      );
 
       if (!hierarchyResponse.ok || !Array.isArray(chunks)) {
         const message = Array.isArray(chunks)

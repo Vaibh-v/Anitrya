@@ -8,12 +8,28 @@ import {
 } from "@/lib/intelligence/owner-network/constants";
 import {
   appendRows,
+  clearAndWriteManySheets,
   clearAndWriteSheet,
+  ensureSheetStructure,
+  ensureTabsExist,
+  readManySheetValues,
   readSheetValues,
   upsertRowByKey,
 } from "@/lib/intelligence/owner-network/google-sheets";
+import {
+  EVIDENCE_TABLE_SPECS,
+  MAX_ROWS_PER_TAB_ENV,
+  mergeProjectRows,
+  resolveMaxRowsPerTab,
+  toSheetRow,
+} from "@/lib/export/normalized-evidence-specs";
+import { readEvidenceTable } from "@/lib/export/normalized-evidence-reader";
 import { ensureOwnerCustomerSheet } from "@/lib/intelligence/owner-network/customer-sheet-network";
 import type { IntegrationSyncResult } from "@/lib/integrations/sync-contracts";
+import {
+  loadSemrushExportDataset,
+  type SemrushExportStatus,
+} from "@/lib/integrations/semrush/semrush-export-adapter";
 
 type ExportNormalizedProjectDataInput = {
   workspaceId: string;
@@ -36,6 +52,193 @@ function nowIso() {
 
 function stringify(value: unknown) {
   return JSON.stringify(value ?? null);
+}
+
+// Sheets writes here use USER_ENTERED; keep SEMrush free-text cells literal.
+function asLiteralText(value: string) {
+  return /^[=+\-@]/.test(value) ? `'${value}` : value;
+}
+
+async function mirrorSemrushEvidence(input: {
+  customerSpreadsheetId: string;
+  workspaceId: string;
+  projectId: string;
+  projectSlug: string;
+  projectLabel: string;
+  from: string;
+  to: string;
+}): Promise<SemrushExportStatus> {
+  try {
+    const dataset = await loadSemrushExportDataset({
+      workspaceId: input.workspaceId,
+      projectSlug: input.projectSlug,
+      from: input.from,
+      to: input.to,
+      prefix: {
+        workspace_id: input.workspaceId,
+        project_id: input.projectId,
+        project_slug: input.projectSlug,
+        project_label: input.projectLabel,
+      },
+    });
+
+    if (!dataset) {
+      return {
+        status: "skipped",
+        reason: "No SEMrush evidence stored for this project and window.",
+      };
+    }
+
+    const textColumns = new Set(
+      ["keyword", "page_url"].map((column) => dataset.header.indexOf(column)),
+    );
+    const rows = dataset.rows.map((row) =>
+      row.map((cell, index) => (textColumns.has(index) ? asLiteralText(cell) : cell)),
+    );
+
+    await ensureSheetStructure(input.customerSpreadsheetId, {
+      [CUSTOMER_TABS.semrushEvidence]: dataset.header,
+    });
+    await clearAndWriteSheet(
+      input.customerSpreadsheetId,
+      CUSTOMER_TABS.semrushEvidence,
+      [dataset.header, ...rows],
+    );
+
+    return {
+      status: "written",
+      tab: CUSTOMER_TABS.semrushEvidence,
+      rows: dataset.rowCount,
+      snapshotDate: dataset.snapshotDate,
+    };
+  } catch (error) {
+    // Never let the SEMrush mirror break the owner export.
+    console.error("OWNER_EXPORT_SEMRUSH_FAILED", error);
+    return {
+      status: "error",
+      reason: error instanceof Error ? error.message : "SEMrush mirror failed.",
+    };
+  }
+}
+
+export type OwnerEvidenceTabResult = {
+  tab: string;
+  status: "written" | "missing_table" | "error";
+  rows: number;
+  truncated: boolean;
+  error?: string;
+};
+
+export type OwnerEvidenceMirrorResult = {
+  status: "written" | "partial" | "error";
+  tabs: OwnerEvidenceTabResult[];
+  error?: string;
+};
+
+/**
+ * Write this project's normalized evidence (read from Postgres, the source of
+ * truth) into the customer workbook. Previously these tabs were copied from
+ * owner-master tabs that nothing populated, so customers received headers
+ * only. Other projects' rows in the same workbook are preserved.
+ *
+ * Uses a fixed number of Sheets calls regardless of tab count and never
+ * throws: failures are reported per tab.
+ */
+async function mirrorProjectEvidence(input: {
+  customerSpreadsheetId: string;
+  workspaceId: string;
+  projectId: string;
+  projectSlug: string;
+  projectLabel: string;
+  from: string;
+  to: string;
+  syncedAt: string;
+}): Promise<OwnerEvidenceMirrorResult> {
+  const limit = resolveMaxRowsPerTab(process.env[MAX_ROWS_PER_TAB_ENV]);
+  const identity = {
+    workspace_id: input.workspaceId,
+    project_id: input.projectId,
+    project_slug: input.projectSlug,
+    project_label: input.projectLabel,
+  };
+
+  const reads = await Promise.all(
+    EVIDENCE_TABLE_SPECS.map((spec) =>
+      readEvidenceTable({
+        spec,
+        workspaceId: input.workspaceId,
+        projectSlug: input.projectSlug,
+        from: input.from,
+        to: input.to,
+        limit,
+      }),
+    ),
+  );
+
+  const tabs: OwnerEvidenceTabResult[] = [];
+  const writable = reads.filter((read) => {
+    if (read.status === "ok") return true;
+    tabs.push({
+      tab: read.spec.tab,
+      status: read.status,
+      rows: 0,
+      truncated: false,
+      error: read.error,
+    });
+    return false;
+  });
+
+  if (writable.length === 0) {
+    return { status: tabs.some((t) => t.status === "error") ? "error" : "written", tabs };
+  }
+
+  try {
+    const tabNames = writable.map((read) => read.spec.tab);
+    await ensureTabsExist(input.customerSpreadsheetId, tabNames);
+    const existing = await readManySheetValues(input.customerSpreadsheetId, tabNames);
+
+    const writes = writable.map((read) => {
+      const header =
+        CUSTOMER_HEADERS[read.spec.tab] ??
+        ["workspace_id", "project_id", "project_slug", "project_label", ...read.spec.columns, "synced_at"];
+      const nextRows = read.rows.map((row) => toSheetRow(header, row, identity, input.syncedAt));
+
+      tabs.push({
+        tab: read.spec.tab,
+        status: "written",
+        rows: nextRows.length,
+        truncated: read.truncated,
+      });
+
+      return {
+        tabName: read.spec.tab,
+        rows: mergeProjectRows({
+          existing: existing[read.spec.tab] ?? [],
+          header,
+          workspaceId: input.workspaceId,
+          projectSlug: input.projectSlug,
+          nextRows,
+        }),
+      };
+    });
+
+    // RAW keeps query/page strings literal (no formula interpretation).
+    await clearAndWriteManySheets(input.customerSpreadsheetId, writes, "RAW");
+
+    // A missing table just means that source has never synced for this
+    // deployment; only read/write errors make the mirror partial.
+    return {
+      status: tabs.some((t) => t.status === "error") ? "partial" : "written",
+      tabs,
+    };
+  } catch (error) {
+    console.error("OWNER_EXPORT_EVIDENCE_FAILED", error);
+    return {
+      status: "error",
+      tabs,
+      error: error instanceof Error ? error.message : "Evidence mirror failed.",
+    };
+  }
 }
 
 function buildCustomerSheetUrl(spreadsheetId: string) {
@@ -165,100 +368,33 @@ export async function exportNormalizedProjectDataToOwnerSheet(
     ],
   });
 
-  const ga4SourceRows = await readSheetValues(
-    network.masterSpreadsheetId,
-    CUSTOMER_TABS.ga4SourceDaily,
-  );
-  const ga4LandingRows = await readSheetValues(
-    network.masterSpreadsheetId,
-    CUSTOMER_TABS.ga4LandingPageDaily,
-  );
-  const gscQueryRows = await readSheetValues(
-    network.masterSpreadsheetId,
-    CUSTOMER_TABS.gscQueryDaily,
-  );
-  const gscPageRows = await readSheetValues(
-    network.masterSpreadsheetId,
-    CUSTOMER_TABS.gscPageDaily,
-  );
-  const googleAdsCampaignRows = await readSheetValues(
-    network.masterSpreadsheetId,
-    CUSTOMER_TABS.googleAdsCampaignDaily,
-  );
-  const gbpLocationRows = await readSheetValues(
-    network.masterSpreadsheetId,
-    CUSTOMER_TABS.gbpLocationDaily,
-  );
-
-  const copyProjectRows = async (args: {
-    sourceRows: string[][];
-    tabName: string;
-    headers: string[];
-  }) => {
-    const { sourceRows, tabName, headers } = args;
-
-    const headerRow =
-      sourceRows[0] && sourceRows[0].length > 0 ? sourceRows[0] : headers.slice();
-
-    const workspaceIdIndex = headerRow.indexOf("workspace_id");
-    const projectSlugIndex = headerRow.indexOf("project_slug");
-
-    const filteredRows =
-      workspaceIdIndex >= 0 && projectSlugIndex >= 0
-        ? sourceRows.slice(1).filter((row) => {
-            return (
-              (row[workspaceIdIndex] ?? "") === input.workspaceId &&
-              (row[projectSlugIndex] ?? "") === input.projectSlug
-            );
-          })
-        : [];
-
-    await clearAndWriteSheet(network.customerSpreadsheetId, tabName, [
-      headerRow,
-      ...filteredRows,
-    ]);
-  };
-
-  await copyProjectRows({
-    sourceRows: ga4SourceRows,
-    tabName: CUSTOMER_TABS.ga4SourceDaily,
-    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.ga4SourceDaily]],
+  const evidence = await mirrorProjectEvidence({
+    customerSpreadsheetId: network.customerSpreadsheetId,
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    projectSlug: input.projectSlug,
+    projectLabel: input.projectLabel,
+    from: input.from,
+    to: input.to,
+    syncedAt,
   });
 
-  await copyProjectRows({
-    sourceRows: ga4LandingRows,
-    tabName: CUSTOMER_TABS.ga4LandingPageDaily,
-    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.ga4LandingPageDaily]],
-  });
-
-  await copyProjectRows({
-    sourceRows: gscQueryRows,
-    tabName: CUSTOMER_TABS.gscQueryDaily,
-    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gscQueryDaily]],
-  });
-
-  await copyProjectRows({
-    sourceRows: gscPageRows,
-    tabName: CUSTOMER_TABS.gscPageDaily,
-    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gscPageDaily]],
-  });
-
-  await copyProjectRows({
-    sourceRows: googleAdsCampaignRows,
-    tabName: CUSTOMER_TABS.googleAdsCampaignDaily,
-    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.googleAdsCampaignDaily]],
-  });
-
-  await copyProjectRows({
-    sourceRows: gbpLocationRows,
-    tabName: CUSTOMER_TABS.gbpLocationDaily,
-    headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gbpLocationDaily]],
+  const semrush = await mirrorSemrushEvidence({
+    customerSpreadsheetId: network.customerSpreadsheetId,
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    projectSlug: input.projectSlug,
+    projectLabel: input.projectLabel,
+    from: input.from,
+    to: input.to,
   });
 
   return {
     masterSpreadsheetId: network.masterSpreadsheetId,
     customerSheetId: network.customerSpreadsheetId,
     syncedAt,
+    evidence,
+    semrush,
     summary: stringify(
       input.results.map((result) => ({
         provider: result.provider,

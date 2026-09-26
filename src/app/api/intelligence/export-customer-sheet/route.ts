@@ -4,6 +4,10 @@ import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getGoogleSheetsAccessTokenForWorkspace } from "@/lib/integrations/google/get-google-access-token";
 import { ensureNormalizedEvidenceTables } from "@/lib/evidence/ensure-normalized-evidence-tables";
+import {
+  loadSemrushExportDataset,
+  type SemrushExportStatus,
+} from "@/lib/integrations/semrush/semrush-export-adapter";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -94,7 +98,15 @@ async function writeSheetValues(args: {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireSession();
+    const session = await requireSession();
+    const workspaceId = asString(session.user?.workspaceId);
+
+    if (!workspaceId) {
+      return NextResponse.json(
+        { error: "No active workspace found for this session." },
+        { status: 401 },
+      );
+    }
 
     const body = await req.json().catch(() => null);
 
@@ -110,8 +122,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Scoped to the signed-in workspace so one customer can never export
+    // another workspace's project by guessing its slug.
     const project = await prisma.project.findFirst({
       where: {
+        workspaceId,
         OR: [{ id: projectRef }, { slug: projectRef }, { name: projectRef }],
       },
       select: {
@@ -346,10 +361,53 @@ export async function POST(req: NextRequest) {
       rows: gbpLocationRows,
     });
 
+    // SEMrush tab is written only when SEMrush evidence exists; a failure here
+    // is reported but never fails the rest of the customer export.
+    let semrush: SemrushExportStatus = {
+      status: "skipped",
+      reason: "No SEMrush evidence stored for this project and window.",
+    };
+
+    try {
+      const semrushDataset = await loadSemrushExportDataset({
+        workspaceId: project.workspaceId,
+        projectSlug: project.slug,
+        from,
+        to,
+      });
+
+      if (semrushDataset) {
+        await writeSheetValues({
+          sheets,
+          spreadsheetId,
+          title: semrushDataset.title,
+          header: semrushDataset.header,
+          rows: semrushDataset.rows,
+        });
+
+        semrush = {
+          status: "written",
+          tab: semrushDataset.title,
+          rows: semrushDataset.rowCount,
+          snapshotDate: semrushDataset.snapshotDate,
+        };
+      }
+    } catch (semrushError) {
+      console.error("CUSTOMER_EXPORT_SEMRUSH_FAILED", semrushError);
+      semrush = {
+        status: "error",
+        reason:
+          semrushError instanceof Error
+            ? semrushError.message
+            : "SEMrush tab export failed.",
+      };
+    }
+
     return NextResponse.json({
       ok: true,
       message: "Customer sheet export completed successfully.",
       spreadsheetId,
+      semrush,
     });
   } catch (error) {
     const message =

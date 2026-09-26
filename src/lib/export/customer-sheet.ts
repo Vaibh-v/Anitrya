@@ -1,5 +1,6 @@
 import { google, sheets_v4 } from "googleapis";
 import { prisma } from "@/lib/prisma";
+import { loadSemrushExportDataset } from "@/lib/integrations/semrush/semrush-export-adapter";
 
 type Dataset = {
   title: string;
@@ -330,6 +331,21 @@ export async function exportCustomerSheet(input: {
     if (dataset) {
       datasets.push(dataset);
     }
+  }
+
+  // SEMrush: included only when evidence exists (loader never throws).
+  const semrushDataset = await loadSemrushExportDataset({
+    workspaceId: input.workspaceId,
+    projectSlug: input.projectSlug,
+    from: input.from,
+    to: input.to,
+  });
+
+  if (semrushDataset) {
+    datasets.push({
+      title: semrushDataset.title,
+      rows: [semrushDataset.header, ...semrushDataset.rows],
+    });
   }
 
   await ensureSheets(
