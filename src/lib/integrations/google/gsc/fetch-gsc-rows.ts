@@ -1,7 +1,9 @@
 /**
- * Pages through the Search Console searchAnalytics API with startRow so large
- * sites are not silently cut off at the first 25,000 rows. Stops at maxRows to
- * keep a single sync inside the serverless time budget.
+ * Reads Search Console searchAnalytics rows for a range without truncation bias.
+ * The API sorts by clicks, so one request over a long range fills its row cap
+ * with the busiest days' rows and drops the long tail of recent ones. We split
+ * the range into 7-day windows and page each window with startRow, capped per
+ * window to stay inside the serverless time budget.
  */
 export type GscApiRow = {
   keys?: string[];
@@ -20,9 +22,41 @@ export async function fetchAllGscRows(input: {
   to: string;
   dimensions: string[];
   label: string;
-  maxRows?: number;
+  maxRowsPerWindow?: number;
 }): Promise<GscApiRow[]> {
-  const maxRows = input.maxRows ?? 100000;
+  const rows: GscApiRow[] = [];
+  for (const window of splitRange(input.from, input.to, 7)) {
+    rows.push(...(await fetchWindow({ ...input, from: window.from, to: window.to })));
+  }
+  return rows;
+}
+
+function splitRange(from: string, to: string, days: number): Array<{ from: string; to: string }> {
+  const windows: Array<{ from: string; to: string }> = [];
+  const end = new Date(`${to}T00:00:00Z`);
+  let cursor = new Date(`${from}T00:00:00Z`);
+  if (Number.isNaN(cursor.getTime()) || Number.isNaN(end.getTime()) || cursor > end) return [{ from, to }];
+  while (cursor <= end) {
+    const windowEnd = new Date(cursor);
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + days - 1);
+    const clipped = windowEnd > end ? end : windowEnd;
+    windows.push({ from: cursor.toISOString().slice(0, 10), to: clipped.toISOString().slice(0, 10) });
+    cursor = new Date(clipped);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return windows;
+}
+
+async function fetchWindow(input: {
+  siteUrl: string;
+  accessToken: string;
+  from: string;
+  to: string;
+  dimensions: string[];
+  label: string;
+  maxRowsPerWindow?: number;
+}): Promise<GscApiRow[]> {
+  const maxRows = input.maxRowsPerWindow ?? 50000;
   const rows: GscApiRow[] = [];
 
   for (let startRow = 0; startRow < maxRows; startRow += PAGE_SIZE) {
