@@ -61,12 +61,20 @@ function apiErrorMessage(input: {
   status: number;
   payload: { error?: { message?: string } };
 }) {
-  return [
+  const base = [
     `${input.provider} request failed with status ${input.status}.`,
     input.payload.error?.message,
   ]
     .filter(Boolean)
     .join(" ");
+
+  // New Google Cloud projects get a 0 requests/minute quota on the Business
+  // Profile APIs until Google approves API access, which surfaces as 429.
+  if (input.status === 429) {
+    return `${base} Business Profile APIs start with zero quota until Google approves access for this Cloud project: request it at https://developers.google.com/my-business/content/prereqs, then confirm non-zero "Requests per minute" for My Business Account Management and Business Information APIs in Google Cloud Console → Quotas.`;
+  }
+
+  return base;
 }
 
 async function fetchGoogleJson<TPayload extends { error?: { message?: string } }>(

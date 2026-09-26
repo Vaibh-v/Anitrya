@@ -66,16 +66,37 @@ export async function GET() {
       ),
     ]);
 
-    const [ga, gsc] = await Promise.all([
+    const [ga, gsc, projects] = await Promise.all([
       prisma.ga4Property.findMany({ where: { workspaceId } }),
       prisma.gscSite.findMany({ where: { workspaceId } }),
+      prisma.project.findMany({ where: { workspaceId }, select: { ga4PropertyId: true } }),
     ]);
 
+    // Older syncs stored GA4 properties as "properties/123" while discovery
+    // stores "123", so the same property appeared twice. Show one option per
+    // GA4 property id: prefer the record a project already uses, then the
+    // record created by current discovery.
+    const inUse = new Set(projects.map((project) => project.ga4PropertyId).filter(Boolean));
+    const bareId = (name: string) => name.replace(/^properties\//, "").trim();
+    const labelById = new Map(gaProps.map((p) => [p.id, p.label]));
+    const byPropertyId = new Map<string, (typeof ga)[number]>();
+    for (const record of ga) {
+      const id = bareId(record.propertyName);
+      const current = byPropertyId.get(id);
+      const score = (r: (typeof ga)[number]) =>
+        (inUse.has(r.id) ? 2 : 0) + (r.propertyName === id ? 1 : 0);
+      if (!current || score(record) > score(current)) byPropertyId.set(id, record);
+    }
+
     return NextResponse.json({
-      ga4Properties: ga.map((p) => ({
-        id: p.id,
-        label: p.displayName || p.propertyName,
-      })),
+      ga4Properties: [...byPropertyId.entries()]
+        .map(([propertyId, p]) => ({
+          id: p.id,
+          label:
+            labelById.get(propertyId) ??
+            `${p.displayName && !p.displayName.includes(propertyId) ? p.displayName : "GA4 property"} (${propertyId})`,
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
       gscSites: gsc.map((s) => ({
         id: s.id,
         label: s.siteUrl,

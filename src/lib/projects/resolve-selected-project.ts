@@ -46,14 +46,28 @@ export async function listWorkspaceProjects(workspaceId: string) {
   const projects = await prisma.project.findMany({
     where: { workspaceId },
     orderBy: { createdAt: "asc" },
+    include: {
+      ga4Property: { select: { propertyName: true, displayName: true } },
+      gscSite: { select: { siteUrl: true } },
+    },
   });
 
-  return projects.map((project) => ({
-    id: project.id,
-    workspaceId: project.workspaceId,
-    slug: project.slug,
-    name: project.name,
-    ga4PropertyId: project.ga4PropertyId,
-    gscSiteId: project.gscSiteId,
-  }));
+  return projects.map((project) => {
+    const propertyId = project.ga4Property?.propertyName.replace(/^properties\//, "") ?? null;
+    const name = project.ga4Property?.displayName ?? null;
+    return {
+      id: project.id,
+      workspaceId: project.workspaceId,
+      slug: project.slug,
+      name: project.name,
+      ga4PropertyId: project.ga4PropertyId,
+      gscSiteId: project.gscSiteId,
+      // Human-readable labels for the project cards (the ids above are
+      // internal record ids and meant nothing to users).
+      ga4Label: propertyId
+        ? name && !name.includes(propertyId) ? `${name} (${propertyId})` : name ?? propertyId
+        : null,
+      gscLabel: project.gscSite?.siteUrl ?? null,
+    };
+  });
 }

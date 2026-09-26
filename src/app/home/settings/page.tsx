@@ -120,8 +120,8 @@ export default async function SettingsPage({
                 </div>
 
                 <div className="mt-6 space-y-2 text-[16px] text-white/62">
-                  <div>GA4: {project.ga4PropertyId ?? "Not mapped"}</div>
-                  <div>GSC: {project.gscSiteId ?? "Not mapped"}</div>
+                  <div>GA4: {project.ga4Label ?? "Not mapped"}</div>
+                  <div>GSC: {project.gscLabel ?? "Not mapped"}</div>
                 </div>
               </a>
             );

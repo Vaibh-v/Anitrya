@@ -53,6 +53,33 @@ async function countRows(params: {
   return toCount(rows?.[0]?.count);
 }
 
+function isMissingRelationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    message.includes("does not exist") ||
+    message.includes("42p01") ||
+    message.includes("42703")
+  );
+}
+
+/**
+ * One source's table not existing yet (e.g. Google Ads / Business Profile
+ * before their first sync) must not blank out the whole overview. Missing
+ * tables or columns count as 0 rows; real database failures still surface.
+ */
+async function countRowsSafely(params: Parameters<typeof countRows>[0]): Promise<number> {
+  try {
+    return await countRows(params);
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      console.warn(`OVERVIEW_EVIDENCE_TABLE_UNAVAILABLE ${params.table}`);
+      return 0;
+    }
+    console.error(`OVERVIEW_EVIDENCE_COUNT_FAILED ${params.table}`, error);
+    throw error;
+  }
+}
+
 export async function getOverviewEvidenceSummary(input: {
   workspaceId: string;
   projectId: string;
@@ -62,36 +89,36 @@ export async function getOverviewEvidenceSummary(input: {
   try {
     const [ga4SourceRows, ga4LandingRows, gscQueryRows, gscPageRows, googleAdsCampaignRows, gbpLocationRows] =
       await Promise.all([
-        countRows({
+        countRowsSafely({
           table: "ga4_source_daily",
           workspaceId: input.workspaceId,
           projectId: input.projectId,
           from: input.from,
           to: input.to,
         }),
-        countRows({
+        countRowsSafely({
           table: "ga4_landing_page_daily",
           workspaceId: input.workspaceId,
           projectId: input.projectId,
           from: input.from,
           to: input.to,
         }),
-        countRows({
+        countRowsSafely({
           table: "gsc_query_daily",
           workspaceId: input.workspaceId,
           projectId: input.projectId,
           from: input.from,
           to: input.to,
         }),
-        countRows({
+        countRowsSafely({
           table: "gsc_page_daily",
           workspaceId: input.workspaceId,
           projectId: input.projectId,
           from: input.from,
           to: input.to,
         }),
-        countRows({ table: "google_ads_campaign_daily", ...input }),
-        countRows({ table: "gbp_location_daily", ...input }),
+        countRowsSafely({ table: "google_ads_campaign_daily", ...input }),
+        countRowsSafely({ table: "gbp_location_daily", ...input }),
       ]);
 
     return {
