@@ -77,6 +77,15 @@ export function ProjectDirectory(props: {
     };
   }, []);
 
+  // Two projects on one property means their evidence is identical — flag it.
+  const sharedGa4 = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const project of props.projects) {
+      if (project.ga4PropertyId) counts.set(project.ga4PropertyId, (counts.get(project.ga4PropertyId) ?? 0) + 1);
+    }
+    return new Set([...counts].filter(([, count]) => count > 1).map(([id]) => id));
+  }, [props.projects]);
+
   const suggestions = useMemo(() => {
     const usedGa4 = new Set(props.projects.map((project) => project.ga4PropertyId).filter(Boolean));
     return ga4
@@ -142,8 +151,9 @@ export function ProjectDirectory(props: {
                 <strong>{project.name}</strong>
                 {selected ? <span className="eye-tag eye-tag-green">Selected</span> : null}
               </div>
-              <div className="eye-row"><span>GA4</span><strong>{project.ga4Label ?? "Not mapped"}</strong></div>
-              <div className="eye-row"><span>Search Console</span><strong>{project.gscLabel ?? "Not mapped"}</strong></div>
+              <div className="eye-row"><span>GA4 property</span><strong className={project.ga4Label ? "" : "is-empty"} title={project.ga4Label ?? undefined}>{project.ga4Label ?? "Not mapped"}</strong></div>
+              <div className="eye-row"><span>Search Console</span><strong className={project.gscLabel ? "" : "is-empty"} title={project.gscLabel ?? undefined}>{project.gscLabel ?? "Not mapped"}</strong></div>
+              {sharedGa4.has(project.ga4PropertyId ?? "") ? <p className="eye-card-warn">Shares its GA4 property with another project</p> : null}
             </a>
           );
         })}
@@ -189,7 +199,7 @@ export function ProjectDirectory(props: {
             <div key={suggestion.ga4.id} className="eye-suggestion">
               <div>
                 <strong>{suggestion.ga4.label}</strong>
-                <span>{suggestion.gsc ? `Suggested site: ${suggestion.gsc.label}` : "No matching Search Console site found"}</span>
+                <span title={suggestion.gsc?.label}>{suggestion.gsc ? `Suggested site: ${suggestion.gsc.label}` : "No matching Search Console site found"}</span>
               </div>
               <button type="button" className="eye-button" onClick={() => openForm(suggestion)}>Set up</button>
             </div>

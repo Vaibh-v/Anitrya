@@ -23,6 +23,20 @@ export async function ensureNormalizedEvidenceTables(): Promise<void> {
     );
   `);
 
+  // Older ensure-created tables only had sessions; add the richer GA4 columns idempotently.
+  for (const statement of [
+    `ALTER TABLE ga4_source_daily ADD COLUMN IF NOT EXISTS medium TEXT`,
+    `ALTER TABLE ga4_source_daily ADD COLUMN IF NOT EXISTS users INT`,
+    `ALTER TABLE ga4_source_daily ADD COLUMN IF NOT EXISTS engaged_sessions INT`,
+    `ALTER TABLE ga4_source_daily ADD COLUMN IF NOT EXISTS conversions INT`,
+    `ALTER TABLE ga4_landing_page_daily ADD COLUMN IF NOT EXISTS page_path TEXT`,
+    `ALTER TABLE ga4_landing_page_daily ADD COLUMN IF NOT EXISTS users INT`,
+    `ALTER TABLE ga4_landing_page_daily ADD COLUMN IF NOT EXISTS engaged_sessions INT`,
+    `ALTER TABLE ga4_landing_page_daily ADD COLUMN IF NOT EXISTS conversions INT`,
+  ]) {
+    await prisma.$executeRawUnsafe(statement);
+  }
+
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS gsc_query_daily (
       id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

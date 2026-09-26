@@ -100,6 +100,7 @@ export function HomeNavigation() {
             router.push(`${pathname}?${query}`);
           }}>
             {!activeProject && <option value="">Project workspace</option>}
+            {activeProject && !projects.some((item) => item.slug === activeProject) ? <option value={activeProject}>Loading project…</option> : null}
             {projects.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}
           </select>
         </label>

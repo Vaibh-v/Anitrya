@@ -172,6 +172,7 @@ function buildMissingRequirements(input: {
   connected: boolean;
   mapped: boolean;
   syncCapable: boolean;
+  runnerAvailable: boolean;
   providerRequiresToken: boolean;
   providerRequiresMapping: boolean;
   blockers: string[];
@@ -186,7 +187,9 @@ function buildMissingRequirements(input: {
     requirements.push("project mapping");
   }
 
-  if (!input.syncCapable) {
+  // Only flag a missing runner when the product truly has none, not when the
+  // provider is merely unmapped or blocked (those have their own requirement).
+  if (!input.runnerAvailable) {
     requirements.push("sync runner");
   }
 
@@ -366,6 +369,7 @@ export async function buildProviderHealthSummary(
       connected,
       mapped,
       syncCapable,
+      runnerAvailable: capabilities.canSync.enabled,
       providerRequiresToken: provider.requiresWorkspaceToken,
       providerRequiresMapping: provider.requiresProjectMapping,
       blockers,
@@ -397,9 +401,15 @@ export async function buildProviderHealthSummary(
       nextAction: isSemrush && semrushReadiness
         ? semrushReadiness.nextAction
         : connected
-        ? capabilities.canSync.enabled
-          ? "Validate mapping and run sync to confirm normalized evidence."
-          : "Keep preserved until the provider is formally activated."
+        ? !capabilities.canSync.enabled
+          ? "Keep preserved until the provider is formally activated."
+          : providerSpecificBlockers(provider.key)[0]
+          ? providerSpecificBlockers(provider.key)[0]
+          : provider.requiresProjectMapping && !mapped
+          ? `Choose a ${provider.label} ${provider.key === "google_ads" ? "customer" : provider.key === "google_business_profile" ? "location" : "source"} for this project in the mapping panel, then run sync.`
+          : evidenceReady
+          ? "Evidence is stored. Re-run sync to refresh the selected range."
+          : "Run sync to collect normalized evidence for this range."
         : provider.requiresWorkspaceToken
         ? "Connect this provider from Settings before expecting evidence."
         : "Preserve this provider until activation work is scheduled.",

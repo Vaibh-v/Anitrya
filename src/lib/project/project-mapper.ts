@@ -43,7 +43,9 @@ function buildGa4PropertyLabel(input: {
   accountName: string | null;
 }) {
   const propertyId = normalizeGa4PropertyId(input.propertyName);
-  const name = asCleanString(input.displayName) ?? input.propertyName;
+  const rawName = asCleanString(input.displayName) ?? input.propertyName;
+  // Some display names already embed the id ("Site - GA4 (123)"); don't repeat it.
+  const name = propertyId ? rawName.replace(new RegExp(`\\s*\\(${propertyId}\\)\\s*$`), "") : rawName;
   const accountName = asCleanString(input.accountName);
 
   if (propertyId && accountName) {

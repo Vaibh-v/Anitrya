@@ -590,7 +590,25 @@ export class RuleBasedIntelligenceProvider implements IntelligenceProvider {
       recommendations.push(result.recommendation);
     }
 
-    const topQueries = [...evidence.gscQueryDaily]
+    // Roll daily rows up to one row per query for the window, so a query
+    // isn't counted once per day it appeared.
+    const queryTotals = new Map<string, GscQueryDailyRow & { weightedPosition: number }>();
+    for (const row of evidence.gscQueryDaily as GscQueryDailyRow[]) {
+      const key = row.query.trim().toLowerCase();
+      if (!key) continue;
+      const current = queryTotals.get(key) ?? { ...row, clicks: 0, impressions: 0, ctr: 0, position: 0, weightedPosition: 0 };
+      current.clicks += row.clicks;
+      current.impressions += row.impressions;
+      current.weightedPosition += row.position * row.impressions;
+      queryTotals.set(key, current);
+    }
+    const aggregatedQueries: GscQueryDailyRow[] = [...queryTotals.values()].map(({ weightedPosition, ...row }) => ({
+      ...row,
+      ctr: row.impressions > 0 ? row.clicks / row.impressions : 0,
+      position: row.impressions > 0 ? weightedPosition / row.impressions : 0,
+    }));
+
+    const topQueries = aggregatedQueries
       .filter(
         (row: GscQueryDailyRow) => row.impressions >= 100 && row.ctr <= 0.03,
       )

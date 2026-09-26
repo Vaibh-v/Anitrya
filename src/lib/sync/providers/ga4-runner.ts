@@ -34,27 +34,35 @@ export async function runGA4Sync(params: {
 
   const normalizedPropertyId = params.propertyId.replace(/^properties\//, "").trim();
 
+  const property = `properties/${normalizedPropertyId}`;
+  const metrics = [
+    { name: "sessions" },
+    { name: "totalUsers" },
+    { name: "engagedSessions" },
+    { name: "keyEvents" },
+  ];
+
   let sourceResponse;
   let landingResponse;
 
   try {
     [sourceResponse, landingResponse] = await Promise.all([
       analyticsData.properties.runReport({
-        property: `properties/${normalizedPropertyId}`,
+        property,
         requestBody: {
           dateRanges: [{ startDate: params.from, endDate: params.to }],
-          dimensions: [{ name: "sessionSource" }, { name: "date" }],
-          metrics: [{ name: "sessions" }],
-          limit: "10000",
+          dimensions: [{ name: "date" }, { name: "sessionSource" }, { name: "sessionMedium" }],
+          metrics,
+          limit: "100000",
         },
       }),
       analyticsData.properties.runReport({
-        property: `properties/${normalizedPropertyId}`,
+        property,
         requestBody: {
           dateRanges: [{ startDate: params.from, endDate: params.to }],
-          dimensions: [{ name: "landingPage" }, { name: "date" }],
-          metrics: [{ name: "sessions" }],
-          limit: "10000",
+          dimensions: [{ name: "date" }, { name: "landingPage" }],
+          metrics,
+          limit: "100000",
         },
       }),
     ]);
@@ -64,8 +72,33 @@ export async function runGA4Sync(params: {
     throw new Error(`GA4 API request failed for property ${normalizedPropertyId}: ${message}`);
   }
 
-  const sourceRows = sourceResponse.data.rows ?? [];
-  const landingRows = landingResponse.data.rows ?? [];
+  const metric = (row: { metricValues?: Array<{ value?: string | null }> | null }, index: number) => {
+    const value = Number(row.metricValues?.[index]?.value ?? 0);
+    return Number.isFinite(value) ? Math.round(value) : 0;
+  };
+
+  const sourceRows = (sourceResponse.data.rows ?? [])
+    .map((row) => ({
+      date: normalizeGaDate(row.dimensionValues?.[0]?.value ?? ""),
+      source: row.dimensionValues?.[1]?.value || "(direct)",
+      medium: row.dimensionValues?.[2]?.value || null,
+      sessions: metric(row, 0),
+      users: metric(row, 1),
+      engaged: metric(row, 2),
+      conversions: metric(row, 3),
+    }))
+    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date));
+
+  const landingRows = (landingResponse.data.rows ?? [])
+    .map((row) => ({
+      date: normalizeGaDate(row.dimensionValues?.[0]?.value ?? ""),
+      landingPage: row.dimensionValues?.[1]?.value || "(not set)",
+      sessions: metric(row, 0),
+      users: metric(row, 1),
+      engaged: metric(row, 2),
+      conversions: metric(row, 3),
+    }))
+    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date));
 
   await prisma.$executeRawUnsafe(`
     DELETE FROM ga4_source_daily
@@ -83,43 +116,41 @@ export async function runGA4Sync(params: {
       AND date <= DATE '${escapeSql(params.to)}'
   `);
 
-  for (const row of sourceRows) {
-    const source = row.dimensionValues?.[0]?.value ?? "unknown";
-    const date = normalizeGaDate(row.dimensionValues?.[1]?.value ?? "");
-    const sessions = Number(row.metricValues?.[0]?.value ?? 0);
+  // Parameterized multi-row inserts in chunks: far fewer round trips than one INSERT per row.
+  const CHUNK = 500;
 
-    if (!date) continue;
-
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO ga4_source_daily (workspace_id, project_slug, date, source, sessions)
-      VALUES (
-        '${escapeSql(params.workspaceId)}',
-        '${escapeSql(params.projectSlug)}',
-        DATE '${escapeSql(date)}',
-        '${escapeSql(source)}',
-        ${Number.isFinite(sessions) ? sessions : 0}
-      )
-    `);
+  for (let offset = 0; offset < sourceRows.length; offset += CHUNK) {
+    const chunk = sourceRows.slice(offset, offset + CHUNK);
+    const values: unknown[] = [];
+    const tuples = chunk.map((row, index) => {
+      const base = index * 7;
+      values.push(row.date, row.source, row.medium, row.sessions, row.users, row.engaged, row.conversions);
+      return `($1, $2, CAST($${base + 3} AS DATE), $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`;
+    });
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO ga4_source_daily (workspace_id, project_slug, date, source, medium, sessions, users, engaged_sessions, conversions)
+       VALUES ${tuples.join(", ")}`,
+      params.workspaceId,
+      params.projectSlug,
+      ...values,
+    );
   }
 
-  for (const row of landingRows) {
-    const landingPage = row.dimensionValues?.[0]?.value ?? "(not set)";
-    const date = normalizeGaDate(row.dimensionValues?.[1]?.value ?? "");
-    const sessions = Number(row.metricValues?.[0]?.value ?? 0);
-
-    if (!date) continue;
-
-    await prisma.$executeRawUnsafe(`
-      INSERT INTO ga4_landing_page_daily (workspace_id, project_slug, date, landing_page, page_path, sessions)
-      VALUES (
-        '${escapeSql(params.workspaceId)}',
-        '${escapeSql(params.projectSlug)}',
-        DATE '${escapeSql(date)}',
-        '${escapeSql(landingPage)}',
-        '${escapeSql(landingPage)}',
-        ${Number.isFinite(sessions) ? sessions : 0}
-      )
-    `);
+  for (let offset = 0; offset < landingRows.length; offset += CHUNK) {
+    const chunk = landingRows.slice(offset, offset + CHUNK);
+    const values: unknown[] = [];
+    const tuples = chunk.map((row, index) => {
+      const base = index * 6;
+      values.push(row.date, row.landingPage, row.sessions, row.users, row.engaged, row.conversions);
+      return `($1, $2, CAST($${base + 3} AS DATE), $${base + 4}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+    });
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO ga4_landing_page_daily (workspace_id, project_slug, date, landing_page, page_path, sessions, users, engaged_sessions, conversions)
+       VALUES ${tuples.join(", ")}`,
+      params.workspaceId,
+      params.projectSlug,
+      ...values,
+    );
   }
 
   return {

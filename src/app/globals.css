@@ -216,8 +216,9 @@ button, input { font: inherit; }
 .eye-table th { padding: 6px 8px; border-bottom: 1px solid var(--eye-border); color: var(--eye-muted); font-weight: 500; text-align: left; white-space: nowrap; }
 .eye-table td { padding: 7px 8px; border-bottom: 1px solid var(--eye-border); }
 .eye-table tr:last-child td { border-bottom: 0; }
-.eye-table .eye-num { text-align: right; white-space: nowrap; }
-.eye-cell-label { position: relative; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eye-table .eye-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.eye-table th, .eye-table td { padding-left: 6px; padding-right: 6px; }
+.eye-cell-label { position: relative; width: 100%; max-width: 0; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .eye-cell-label[style]::before { content: ""; position: absolute; inset: 3px auto 3px 0; width: var(--bar); border-radius: 4px; background: linear-gradient(90deg, rgba(92,242,255,.16), rgba(139,123,255,.08)); z-index: -1; }
 .eye-table tbody tr { position: relative; isolation: isolate; }
 .eye-table tbody tr:hover td { background: rgba(255,255,255,.03); }
@@ -242,7 +243,11 @@ button, input { font: inherit; }
 .eye-project-card:hover { border-color: rgba(92,242,255,.35); }
 .eye-project-card.is-selected { border-color: rgba(92,242,255,.55); background: linear-gradient(160deg, rgba(92,242,255,.08), rgba(139,123,255,.06)); }
 .eye-project-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 14px; }
-.eye-project-card .eye-row strong { max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.eye-project-card .eye-row { flex-direction: column; gap: 2px; padding: 7px 0; }
+.eye-project-card .eye-row span { color: var(--eye-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; }
+.eye-project-card .eye-row strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.eye-project-card .eye-row:last-child { border-bottom: 0; }
+.eye-project-card .eye-row strong.is-empty { color: #f5c46b; }
 .eye-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: 10px; margin-top: 14px; border-top: 1px solid var(--eye-border); padding-top: 14px; }
 .eye-form label { display: flex; flex-direction: column; gap: 5px; color: var(--eye-muted); font-size: 11px; }
 .eye-form input, .eye-form select, .eye-legacy select, .eye-legacy input:not([type="checkbox"]):not([type="radio"]) {
@@ -258,7 +263,8 @@ button, input { font: inherit; }
 .eye-suggestion { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px dashed var(--eye-border); border-radius: 12px; padding: 10px 12px; }
 .eye-suggestion div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .eye-suggestion strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.eye-suggestion span { color: var(--eye-muted); font-size: 11px; }
+.eye-suggestion span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--eye-muted); font-size: 11px; }
+.eye-suggestion .eye-button { flex-shrink: 0; white-space: nowrap; }
 
 /* ---- Legacy settings panels: restyled to match the design system ---- */
 .eye-legacy { display: flex; flex-direction: column; gap: 16px; }
@@ -286,3 +292,6 @@ button, input { font: inherit; }
 
 @media (max-width: 1180px) { .eye-page.eye-dashboard { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 900px) { .eye-split { grid-template-columns: minmax(0, 1fr); } .eye-form { grid-template-columns: minmax(0, 1fr); } }
+
+@media (max-width: 1380px) { .eye-split { grid-template-columns: minmax(0, 1fr); } }
+.eye-card-warn { margin-top: 6px !important; color: #f5c46b; font-size: 11px; }

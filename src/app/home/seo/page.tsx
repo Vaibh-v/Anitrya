@@ -17,13 +17,25 @@ type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
 };
 
-function shortPath(url: string) {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.pathname}${parsed.search}` || "/";
-  } catch {
-    return url;
+/** Path only, unless the top pages span several hosts (www vs apex, http vs https) — then keep the host so rows stay distinguishable. */
+function pageLabeler(urls: string[]) {
+  const origins = new Set<string>();
+  for (const url of urls) {
+    try {
+      origins.add(new URL(url).origin);
+    } catch {
+      /* not a URL */
+    }
   }
+  return (url: string) => {
+    try {
+      const parsed = new URL(url);
+      const path = `${parsed.pathname}${parsed.search}` || "/";
+      return origins.size > 1 ? `${parsed.protocol === "http:" ? "http://" : ""}${parsed.host}${path}` : path;
+    } catch {
+      return url;
+    }
+  };
 }
 
 export default async function SeoPage(props: PageProps) {
@@ -38,6 +50,7 @@ export default async function SeoPage(props: PageProps) {
   const seo = await getSeoDetail({ workspaceId, projectSlug: project.projectSlug, from, to });
   const settingsHref = `/home/settings?project=${encodeURIComponent(project.projectSlug)}`;
   const maxQueryClicks = Math.max(1, ...seo.topQueries.map((row) => row.primary));
+  const shortPath = pageLabeler(seo.topPages.map((row) => row.label));
   const maxPageClicks = Math.max(1, ...seo.topPages.map((row) => row.primary));
 
   return (

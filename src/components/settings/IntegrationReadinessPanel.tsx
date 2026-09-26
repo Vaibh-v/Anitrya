@@ -48,6 +48,7 @@ function readinessText(record: ProviderHealthRecord) {
 
 function formatLastSync(record: ProviderHealthRecord) {
   if (!record.lastSyncAt) return "No sync recorded";
+  if (!record.mapped && record.lastSyncRows === 0) return "Nothing synced yet — not mapped for this project";
 
   return `${record.lastSyncStatus} · ${record.lastSyncRows} rows · ${new Date(
     record.lastSyncAt,
