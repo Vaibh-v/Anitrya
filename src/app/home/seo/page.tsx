@@ -1,158 +1,126 @@
-import { requireSession } from "@/lib/auth";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
-import { getSeoEvidenceSummary } from "@/lib/evidence/normalized-seo-store";
+import { getSeoDetail } from "@/lib/evidence/page-insights";
+import {
+  EmptyState,
+  KpiGrid,
+  PageHeading,
+  RankedTable,
+  formatNumber,
+  formatPercent,
+  resolveRange,
+} from "@/components/dashboard/PageParts";
 
 type PageProps = {
-  searchParams?: Promise<{
-    project?: string;
-    from?: string;
-    to?: string;
-  }>;
+  searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
 };
 
-function shiftDate(base: Date, offsetDays: number) {
-  const next = new Date(base);
-  next.setDate(next.getDate() + offsetDays);
-  return next;
-}
-
-function formatDate(date: Date) {
-  return date.toISOString().slice(0, 10);
+function shortPath(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}` || "/";
+  } catch {
+    return url;
+  }
 }
 
 export default async function SeoPage(props: PageProps) {
-  const session = await requireSession();
+  const session = await getServerSession(authOptions);
+  if (!session) redirect("/");
   const workspaceId = session.user?.workspaceId;
+  if (!workspaceId) redirect("/");
 
-  if (!workspaceId) {
-    throw new Error("Missing workspace context on the current session.");
-  }
-
-  const searchParams = (await props.searchParams) ?? {};
-  const today = new Date();
-  const defaultFrom = formatDate(shiftDate(today, -29));
-  const defaultTo = formatDate(today);
-
-  const projectRef = searchParams.project ?? null;
-  const from = searchParams.from ?? defaultFrom;
-  const to = searchParams.to ?? defaultTo;
-
-  const project = await getProjectMapping({
-    ref: projectRef,
-    workspaceId,
-  });
-
-  const summary = await getSeoEvidenceSummary({
-    workspaceId,
-    projectId: project.projectSlug,
-    from,
-    to,
-  });
-
-  const confidence =
-    summary.queryRows > 0 && summary.pageRows > 0
-      ? "medium"
-      : summary.queryRows > 0 || summary.pageRows > 0
-        ? "low"
-        : "low";
+  const params = (await props.searchParams) ?? {};
+  const { from, to } = resolveRange(params);
+  const project = await getProjectMapping({ ref: params.project ?? null, workspaceId });
+  const seo = await getSeoDetail({ workspaceId, projectSlug: project.projectSlug, from, to });
+  const settingsHref = `/home/settings?project=${encodeURIComponent(project.projectSlug)}`;
+  const maxQueryClicks = Math.max(1, ...seo.topQueries.map((row) => row.primary));
+  const maxPageClicks = Math.max(1, ...seo.topPages.map((row) => row.primary));
 
   return (
-    <main className="space-y-8">
-      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,32,75,0.62),rgba(4,10,24,0.88))] p-8">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-200/80">Anitrya intelligence</div>
-            <h1 className="mt-4 text-5xl font-semibold tracking-tight text-white">SEO evidence</h1>
-            <p className="mt-4 max-w-[900px] text-[18px] leading-8 text-white/76">
-              Search-demand and search-page interpretation built from normalized Search Console evidence.
-            </p>
-          </div>
+    <main className="eye-dashboard eye-page">
+      <div className="eye-column">
+        <PageHeading
+          overline="Anitrya / Search"
+          title="SEO evidence"
+          description="Search demand and page visibility from normalized Search Console evidence for the selected project and range."
+          projectLabel={project.projectLabel}
+          from={from}
+          to={to}
+        />
 
-          <div className="rounded-[24px] border border-cyan-400/20 bg-cyan-400/10 px-6 py-5 text-right">
-            <div className="text-[12px] uppercase tracking-[0.32em] text-cyan-100/70">Active project</div>
-            <div className="mt-3 text-[34px] font-semibold text-white">{project.projectLabel}</div>
-            <div className="mt-1 text-sm text-white/55">ACTIVE PROJECT • {project.projectSlug}</div>
-          </div>
+        {!project.gscSiteUrl ? (
+          <EmptyState title="No Search Console site mapped" body="Map a Search Console site to this project to collect query and page evidence." href={settingsHref} action="Map sources" />
+        ) : seo.queryRows === 0 ? (
+          <EmptyState title="No search evidence in this range" body={`${project.gscSiteUrl} is mapped, but no rows are stored for ${from} → ${to}.`} href={settingsHref} action="Run sync" />
+        ) : null}
+
+        <KpiGrid
+          items={[
+            { label: "Clicks", value: formatNumber(seo.clicks), note: "Organic clicks in range", accent: "cyan" },
+            { label: "Impressions", value: formatNumber(seo.impressions), note: "Search appearances", accent: "violet" },
+            { label: "CTR", value: formatPercent(seo.ctr, 2), note: "Clicks ÷ impressions", accent: "green" },
+            { label: "Avg. position", value: seo.position ? seo.position.toFixed(1) : "—", note: "Impression-weighted", accent: "amber" },
+          ]}
+        />
+
+        <div className="eye-split">
+          <RankedTable
+            title="Top queries"
+            tag={`${formatNumber(seo.queryRows)} rows`}
+            columns={[{ label: "Query" }, { label: "Clicks", align: "right" }, { label: "Impr.", align: "right" }, { label: "CTR", align: "right" }, { label: "Pos.", align: "right" }]}
+            rows={seo.topQueries.map((row) => ({
+              key: row.label,
+              bar: row.primary / maxQueryClicks,
+              cells: [row.label, formatNumber(row.primary), formatNumber(row.secondary), formatPercent(row.tertiary ?? 0), (row.quaternary ?? 0).toFixed(1)],
+            }))}
+            empty="No query evidence for this range yet."
+          />
+          <RankedTable
+            title="Top pages"
+            tag={`${formatNumber(seo.pageRows)} rows`}
+            columns={[{ label: "Page" }, { label: "Clicks", align: "right" }, { label: "Impr.", align: "right" }, { label: "CTR", align: "right" }, { label: "Pos.", align: "right" }]}
+            rows={seo.topPages.map((row) => ({
+              key: row.label,
+              bar: row.primary / maxPageClicks,
+              cells: [<span key="p" title={row.label}>{shortPath(row.label)}</span>, formatNumber(row.primary), formatNumber(row.secondary), formatPercent(row.tertiary ?? 0), (row.quaternary ?? 0).toFixed(1)],
+            }))}
+            empty="No page evidence for this range yet."
+          />
         </div>
-      </section>
+      </div>
 
-      <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Query rows", value: summary.queryRows, helper: "Available query-level evidence for the current range" },
-          { label: "Page rows", value: summary.pageRows, helper: "Available page-level evidence for the current range" },
-          { label: "Entity findings", value: summary.queryRows + summary.pageRows, helper: "Structured SEO findings currently rankable once interpretation deepens" },
-          { label: "Confidence", value: confidence, helper: "Current ranked confidence for SEO interpretation" },
-        ].map((item) => (
-          <div key={item.label} className="rounded-[26px] border border-white/10 bg-black/14 p-6">
-            <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
-            <div className="mt-5 text-[56px] font-semibold leading-none text-white">{item.value}</div>
-            <p className="mt-5 text-[16px] leading-7 text-white/68">{item.helper}</p>
+      <aside className="eye-column">
+        <article className="eye-panel">
+          <h2>Source <span className={`eye-tag ${project.gscSiteUrl ? "eye-tag-green" : "eye-tag-amber"}`}>{project.gscSiteUrl ? "Mapped" : "Not mapped"}</span></h2>
+          <div className="eye-section">
+            <div className="eye-row"><span>Search Console site</span><strong>{project.gscSiteUrl ?? "—"}</strong></div>
+            <div className="eye-row"><span>Query rows</span><strong className="eye-mono">{formatNumber(seo.queryRows)}</strong></div>
+            <div className="eye-row"><span>Page rows</span><strong className="eye-mono">{formatNumber(seo.pageRows)}</strong></div>
           </div>
-        ))}
-      </section>
-
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.35fr_1fr]">
-        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
-          <h2 className="text-[34px] font-semibold text-white">SEO evidence coverage</h2>
-          <p className="mt-2 text-[15px] text-white/68">
-            Coverage across demand capture and page-level search visibility.
+          <p className="eye-panel-text">
+            Position is impression-weighted across queries. Search Console reports up to 50,000 rows per request, so very large sites show their top rows.
           </p>
-
-          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        </article>
+        <article className="eye-panel eye-next">
+          <h2>Next actions</h2>
+          <div className="eye-section">
             {[
-              { label: "Query evidence", value: summary.queryRows, helper: "Search demand capture evidence used for topic, CTR, and impression interpretation." },
-              { label: "Page evidence", value: summary.pageRows, helper: "Page-level visibility evidence used for ranking and page-priority interpretation." },
-              { label: "Best next step", value: "CTR / rank focus", helper: "Use query and page concentration to find stronger confirming patterns." },
-              { label: "Readiness", value: summary.queryRows + summary.pageRows > 0 ? "partial" : "thin", helper: "Indicates whether SEO evidence is deep enough for stronger ranking." },
-            ].map((item) => (
-              <div key={item.label} className="rounded-[24px] border border-white/10 bg-white/[0.02] p-5">
-                <div className="text-[12px] uppercase tracking-[0.3em] text-white/46">{item.label}</div>
-                <div className="mt-3 text-[44px] font-semibold leading-none text-white">{item.value}</div>
-                <div className="mt-4 text-[15px] leading-7 text-white/64">{item.helper}</div>
-              </div>
+              seo.queryRows === 0 ? "Run a sync from Settings for this range." : "Review high-impression queries with low CTR for title/meta improvements.",
+              "Compare top pages with Behavior landing pages to spot traffic that doesn't engage.",
+              "Re-check after the next sync to confirm the pattern holds.",
+            ].map((action, index) => (
+              <div key={action} className="eye-row"><span>{String(index + 1).padStart(2, "0")}</span><span>{action}</span></div>
             ))}
           </div>
-        </div>
-
-        <div className="rounded-[28px] border border-white/10 bg-black/14 p-7">
-          <h2 className="text-[34px] font-semibold text-white">SEO interpretation</h2>
-          <p className="mt-2 text-[15px] text-white/68">
-            Current SEO contribution to the total intelligence read.
-          </p>
-
-          <div className="mt-8 rounded-[24px] border border-white/10 bg-white/[0.02] p-6">
-            <div className="text-[22px] font-semibold text-white">
-              {summary.queryRows + summary.pageRows === 0
-                ? "No diagnostics available"
-                : "SEO evidence is available"}
-            </div>
-            <div className="mt-4 text-[16px] leading-8 text-white/68">
-              {summary.queryRows + summary.pageRows === 0
-                ? "Evidence is still limited for this section. Run sync and review connected sources."
-                : `The current range contains ${summary.queryRows} query rows and ${summary.pageRows} page rows for ranked interpretation.`}
-            </div>
+          <div className="eye-actions">
+            <a className="eye-secondary" href={settingsHref}>Manage sources</a>
           </div>
-        </div>
-      </section>
-
-      <section className="rounded-[28px] border border-white/10 bg-black/14 p-7">
-        <h2 className="text-[34px] font-semibold text-white">SEO next actions</h2>
-        <div className="mt-6 space-y-3">
-          {[
-            "Confirm the active project still maps to the correct Search Console property.",
-            "Run sync after mapping is confirmed so query and page rows can hydrate.",
-            "Validate that query and page evidence point to the same ranking pattern before promotion.",
-            "Re-check the intelligence read after GSC evidence becomes materially available.",
-          ].map((action, index) => (
-            <div
-              key={action}
-              className="rounded-[20px] border border-white/10 bg-white/[0.02] px-5 py-4 text-[16px] text-white/78"
-            >
-              {index + 1}. {action}
-            </div>
-          ))}
-        </div>
-      </section>
+        </article>
+      </aside>
     </main>
   );
 }

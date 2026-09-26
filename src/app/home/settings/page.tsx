@@ -1,4 +1,6 @@
-import { requireSession } from "@/lib/auth";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth";
 import { resolveSelectedProject, listWorkspaceProjects } from "@/lib/projects/resolve-selected-project";
 import { EntitySyncPanel } from "@/components/settings/EntitySyncPanel";
 import { CustomerSheetExportButton } from "@/components/settings/CustomerSheetExportButton";
@@ -9,6 +11,7 @@ import { IntegrationReadinessPanel } from "@/components/settings/IntegrationRead
 import { buildProjectIntegrationHealth } from "@/lib/integrations/project-integration-health";
 import { GbpLocationMappingPanel } from "@/components/settings/GbpLocationMappingPanel";
 import { GoogleAdsAccountMappingPanel } from "@/components/settings/GoogleAdsAccountMappingPanel";
+import { ProjectDirectory } from "@/components/settings/ProjectDirectory";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -45,7 +48,8 @@ export default async function SettingsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await requireSession();
+  const session = await getServerSession(authOptions);
+  if (!session) redirect("/");
   const resolved = await searchParams;
 
   const workspaceId = session.user?.workspaceId ?? null;
@@ -74,88 +78,29 @@ export default async function SettingsPage({
       })
     : null;
 
+  const rangeLinks = [
+    { key: "7d", label: "7D" },
+    { key: "30d", label: "30D" },
+    { key: "90d", label: "90D" },
+  ];
+
   return (
-    <div className="space-y-8">
-      <section className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,35,81,0.92),rgba(6,18,45,0.94))] px-8 py-8">
-        <div className="flex items-start justify-between gap-8">
-          <div className="max-w-[880px]">
-            <div className="text-[18px] text-white/65">Project context</div>
-            <h1 className="mt-3 text-[46px] font-semibold tracking-[-0.04em] text-white">
-              {selectedProject?.name ?? "No project selected"}
-            </h1>
-            <p className="mt-4 max-w-[900px] text-[21px] leading-10 text-white/72">
-              Intelligence is strongest when a single business context is selected.
-              Each project should map to one GA4 property and one GSC site.
-            </p>
-          </div>
-
-          <button className="rounded-[22px] border border-white/12 bg-white/5 px-8 py-5 text-[18px] font-medium text-white/88">
-            Create Project
-          </button>
+    <main className="eye-page eye-settings">
+      <section className="eye-heading">
+        <div>
+          <p className="eye-overline">Anitrya / Settings</p>
+          <h1>{selectedProject?.name ?? "Set up your first project"}</h1>
+          <p>Map sources, sync evidence and export for the selected project.</p>
         </div>
-
-        <div className="mt-8 grid gap-5 lg:grid-cols-2">
-          {projects.map((project) => {
-            const selected = selectedProject?.slug === project.slug;
-            return (
-              <a
-                key={project.id}
-                href={buildHref("/home/settings", {
-                  project: project.slug,
-                  preset,
-                })}
-                className={`rounded-[26px] border px-7 py-7 transition ${
-                  selected
-                    ? "border-cyan-300/22 bg-[linear-gradient(180deg,rgba(20,47,108,0.62),rgba(5,18,47,0.68))]"
-                    : "border-white/10 bg-black/10"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="text-[18px] font-semibold text-white">{project.name}</div>
-                  {selected ? (
-                    <span className="rounded-full border border-cyan-300/22 bg-cyan-300/10 px-4 py-1 text-[14px] text-cyan-100">
-                      Selected
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="mt-6 space-y-2 text-[16px] text-white/62">
-                  <div>GA4: {project.ga4Label ?? "Not mapped"}</div>
-                  <div>GSC: {project.gscLabel ?? "Not mapped"}</div>
-                </div>
-              </a>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="rounded-[28px] border border-white/10 bg-[linear-gradient(90deg,rgba(18,38,88,0.7),rgba(7,17,39,0.88),rgba(14,44,64,0.56))] px-6 py-5">
-        <div className="text-[12px] uppercase tracking-[0.28em] text-white/55">
-          Date range
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-5">
-          <div className="text-[22px] font-medium text-white">
-            {from} → {to}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {[
-              { key: "7d", label: "7D" },
-              { key: "30d", label: "30D" },
-              { key: "90d", label: "90D" },
-              { key: "custom", label: "Custom" },
-            ].map((item) => (
+        <div className="eye-heading-project">
+          <span>Date range</span>
+          <strong className="eye-mono">{from} → {to}</strong>
+          <div className="eye-segment eye-segment-inline" role="group" aria-label="Date range">
+            {rangeLinks.map((item) => (
               <a
                 key={item.key}
-                href={buildHref("/home/settings", {
-                  project: selectedProject?.slug ?? null,
-                  preset: item.key,
-                })}
-                className={`rounded-full border px-4 py-2 text-[14px] ${
-                  preset === item.key
-                    ? "border-cyan-300/30 bg-cyan-300/12 text-cyan-100"
-                    : "border-white/10 bg-white/4 text-white/70"
-                }`}
+                aria-pressed={preset === item.key}
+                href={buildHref("/home/settings", { project: selectedProject?.slug ?? null, preset: item.key })}
               >
                 {item.label}
               </a>
@@ -164,6 +109,9 @@ export default async function SettingsPage({
         </div>
       </section>
 
+      <ProjectDirectory projects={projects} selectedSlug={selectedProject?.slug ?? null} preset={preset} />
+
+      <div className="eye-legacy">
       {selectedProject ? (
         <>
           <ProjectMappingPanel
@@ -208,10 +156,12 @@ export default async function SettingsPage({
           />
         </>
       ) : (
-        <section className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(16,34,79,0.88),rgba(5,15,39,0.94))] px-8 py-8 text-[18px] text-white/72">
-          No project is available for this workspace yet.
+        <section className="eye-alert">
+          <strong>No project yet</strong>
+          <span>Create a project above, or set one up from the properties available in your Google account.</span>
         </section>
       )}
-    </div>
+      </div>
+    </main>
   );
 }

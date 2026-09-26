@@ -205,3 +205,84 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ---- Shared page primitives (SEO, Behavior, Intelligence, Settings) ---- */
+.eye-page { display: flex; flex-direction: column; gap: 16px; }
+.eye-page.eye-dashboard { display: grid; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; gap: 16px; }
+.eye-page h1, .eye-page h2, .eye-page h3, .eye-page p { margin: 0; }
+.eye-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.eye-table-wrap { margin-top: 10px; overflow-x: auto; }
+.eye-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.eye-table th { padding: 6px 8px; border-bottom: 1px solid var(--eye-border); color: var(--eye-muted); font-weight: 500; text-align: left; white-space: nowrap; }
+.eye-table td { padding: 7px 8px; border-bottom: 1px solid var(--eye-border); }
+.eye-table tr:last-child td { border-bottom: 0; }
+.eye-table .eye-num { text-align: right; white-space: nowrap; }
+.eye-cell-label { position: relative; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eye-cell-label[style]::before { content: ""; position: absolute; inset: 3px auto 3px 0; width: var(--bar); border-radius: 4px; background: linear-gradient(90deg, rgba(92,242,255,.16), rgba(139,123,255,.08)); z-index: -1; }
+.eye-table tbody tr { position: relative; isolation: isolate; }
+.eye-table tbody tr:hover td { background: rgba(255,255,255,.03); }
+.eye-findings { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.eye-finding { border: 1px solid var(--eye-border); border-radius: 12px; padding: 12px; background: rgba(255,255,255,.02); }
+.eye-finding-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.eye-finding-head strong { margin-right: auto; font-size: 14px; }
+.eye-finding p { margin-top: 6px; font-size: 12.5px; line-height: 1.6; }
+.eye-finding-muted { color: var(--eye-muted); font-style: normal; }
+.eye-finding-foot { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; color: var(--eye-muted); font-size: 11px; }
+.eye-segment-inline { margin-top: 6px; justify-content: flex-end; }
+.eye-segment-inline a { border-radius: 99px; padding: 3px 10px; color: var(--eye-muted); font-size: 11px; }
+.eye-segment-inline a[aria-pressed="true"] { background: rgba(255,255,255,.12); color: #fff; }
+.eye-button { border: 1px solid var(--eye-border); border-radius: 10px; background: rgba(255,255,255,.05); padding: 9px 14px; color: #e8eef7; font-size: 12px; font-weight: 600; cursor: pointer; }
+.eye-button:hover { border-color: rgba(92,242,255,.5); }
+.eye-button:disabled { opacity: .5; cursor: not-allowed; }
+.eye-button-primary { border: 0; background: linear-gradient(90deg, var(--eye-cyan), var(--eye-violet)); color: #04060c; }
+.eye-directory-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.eye-directory-title { margin-top: 4px !important; color: #fff !important; font-size: 18px !important; }
+.eye-project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 14px; }
+.eye-project-card { display: block; border: 1px solid var(--eye-border); border-radius: 14px; padding: 12px 14px; background: rgba(255,255,255,.02); transition: border-color .2s, background .2s; }
+.eye-project-card:hover { border-color: rgba(92,242,255,.35); }
+.eye-project-card.is-selected { border-color: rgba(92,242,255,.55); background: linear-gradient(160deg, rgba(92,242,255,.08), rgba(139,123,255,.06)); }
+.eye-project-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 14px; }
+.eye-project-card .eye-row strong { max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.eye-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: 10px; margin-top: 14px; border-top: 1px solid var(--eye-border); padding-top: 14px; }
+.eye-form label { display: flex; flex-direction: column; gap: 5px; color: var(--eye-muted); font-size: 11px; }
+.eye-form input, .eye-form select, .eye-legacy select, .eye-legacy input:not([type="checkbox"]):not([type="radio"]) {
+  width: 100%; border: 1px solid var(--eye-border) !important; border-radius: 10px !important; background: rgba(255,255,255,.04) !important;
+  padding: 9px 11px !important; height: auto !important; color: #e8eef7 !important; font-size: 13px !important;
+}
+.eye-form select option, .eye-legacy select option { background: #0a0f1c; }
+.eye-message { margin-top: 10px !important; border: 1px solid var(--eye-border); border-radius: 10px; padding: 9px 12px; color: var(--eye-muted); font-size: 12px; }
+.eye-message.is-error { border-color: rgba(255,120,120,.4); color: #ffc2c2; }
+.eye-suggestions-block { margin-top: 16px; border-top: 1px solid var(--eye-border); padding-top: 14px; }
+.eye-suggestions-block h3 { color: var(--eye-cyan); font-size: 12px; font-weight: 600; }
+.eye-suggestion-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; margin-top: 10px; }
+.eye-suggestion { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px dashed var(--eye-border); border-radius: 12px; padding: 10px 12px; }
+.eye-suggestion div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.eye-suggestion strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.eye-suggestion span { color: var(--eye-muted); font-size: 11px; }
+
+/* ---- Legacy settings panels: restyled to match the design system ---- */
+.eye-legacy { display: flex; flex-direction: column; gap: 16px; }
+.eye-legacy > section, .eye-legacy > div > section, .eye-legacy section[class*="rounded-"] {
+  border: 1px solid var(--eye-border) !important; border-radius: 18px !important;
+  background: linear-gradient(160deg, rgba(255,255,255,.06), rgba(255,255,255,.02)) !important;
+  padding: 18px !important; box-shadow: none !important;
+}
+.eye-legacy [class*="rounded-["] { border-radius: 12px !important; }
+.eye-legacy > section, .eye-legacy > div > section { border-radius: 18px !important; }
+.eye-legacy h2 { color: #fff !important; font-size: 17px !important; font-weight: 600 !important; letter-spacing: -.01em !important; }
+.eye-legacy h3 { font-size: 14px !important; }
+.eye-legacy [class*="text-[5"], .eye-legacy [class*="text-[4"], .eye-legacy [class*="text-[3"], .eye-legacy .text-5xl, .eye-legacy .text-4xl, .eye-legacy .text-3xl { font-size: 20px !important; line-height: 1.2 !important; }
+.eye-legacy [class*="text-[2"], .eye-legacy .text-2xl { font-size: 15px !important; line-height: 1.4 !important; }
+.eye-legacy [class*="text-[1"], .eye-legacy .text-lg, .eye-legacy .text-xl, .eye-legacy .text-base { font-size: 12.5px !important; line-height: 1.6 !important; }
+.eye-legacy [class*="leading-"] { line-height: 1.6 !important; }
+.eye-legacy [class*="px-8"], .eye-legacy [class*="px-7"] { padding-left: 14px !important; padding-right: 14px !important; }
+.eye-legacy [class*="py-8"], .eye-legacy [class*="py-7"] { padding-top: 12px !important; padding-bottom: 12px !important; }
+.eye-legacy [class*="mt-8"], .eye-legacy [class*="mt-6"] { margin-top: 12px !important; }
+.eye-legacy [class*="gap-8"], .eye-legacy [class*="gap-6"] { gap: 12px !important; }
+.eye-legacy [class*="h-14"] { height: auto !important; }
+.eye-legacy button { border-radius: 10px !important; font-size: 12px !important; padding: 9px 14px !important; height: auto !important; }
+.eye-legacy [class*="bg-[linear-gradient"] { background: rgba(255,255,255,.02) !important; }
+.eye-legacy [class*="uppercase"] { font-size: 10.5px !important; letter-spacing: .16em !important; }
+
+@media (max-width: 1180px) { .eye-page.eye-dashboard { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .eye-split { grid-template-columns: minmax(0, 1fr); } .eye-form { grid-template-columns: minmax(0, 1fr); } }

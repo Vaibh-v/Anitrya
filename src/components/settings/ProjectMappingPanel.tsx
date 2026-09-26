@@ -222,7 +222,7 @@ export function ProjectMappingPanel({
           </select>
 
           <div className="mt-4 text-[15px] leading-7 text-white/56">
-            Saved value: {currentGa4PropertyId ?? "Not mapped"}
+            Saved value: {options.ga4Properties.find((item) => item.id === currentGa4PropertyId)?.label ?? (currentGa4PropertyId ? "Saved property" : "Not mapped")}
           </div>
 
           {noGa4Options ? (
@@ -252,7 +252,7 @@ export function ProjectMappingPanel({
           </select>
 
           <div className="mt-4 text-[15px] leading-7 text-white/56">
-            Saved value: {currentGscSiteId ?? "Not mapped"}
+            Saved value: {options.gscSites.find((item) => item.id === currentGscSiteId)?.label ?? (currentGscSiteId ? "Saved site" : "Not mapped")}
           </div>
 
           {noGscOptions ? (
