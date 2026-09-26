@@ -1,3 +1,4 @@
+import { ensureAdditiveSchema } from "@/lib/db/ensure-additive-schema";
 import { prisma } from "@/lib/prisma";
 import type { IntegrationSyncResult } from "@/lib/integrations/sync-contracts";
 
@@ -137,6 +138,7 @@ export async function recordSyncHealthRun(
   const nextActions = buildNextActions(input);
 
   try {
+    await ensureAdditiveSchema();
     const run = await prisma.syncHealthRun.create({
       data: {
         workspaceId: input.workspaceId,
@@ -171,6 +173,7 @@ export async function listSyncHealthRuns(input: {
   take?: number;
 }): Promise<SyncHealthRunView[]> {
   try {
+    await ensureAdditiveSchema();
     const runs = await prisma.syncHealthRun.findMany({
       where: {
         workspaceId: input.workspaceId,

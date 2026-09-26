@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleProjectProviderSync } from "@/lib/integrations/handle-project-provider-sync";
+import { ensureAdditiveSchema } from "@/lib/db/ensure-additive-schema";
 import type { IntegrationSyncProvider } from "@/lib/integrations/sync-contracts";
 
 // Large properties page through several API responses; allow the full serverless budget.
@@ -23,6 +24,7 @@ const PROVIDERS: Record<string, IntegrationSyncProvider> = {
  * routes it writes project-scoped normalized evidence and returns { ok, result }.
  */
 export async function POST(request: NextRequest) {
+  await ensureAdditiveSchema();
   const source = request.nextUrl.searchParams.get("source") ?? "";
   const provider = PROVIDERS[source];
 
