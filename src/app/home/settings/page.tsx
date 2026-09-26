@@ -43,6 +43,16 @@ function buildHref(base: string, params: Record<string, string | null | undefine
   return `${base}?${search.toString()}`;
 }
 
+function StepHead(props: { index: string; title: string; text: string }) {
+  return (
+    <div className="eye-step-head">
+      <span>{props.index}</span>
+      <h2>{props.title}</h2>
+      <p>{props.text}</p>
+    </div>
+  );
+}
+
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -109,59 +119,74 @@ export default async function SettingsPage({
         </div>
       </section>
 
-      <ProjectDirectory projects={projects} selectedSlug={selectedProject?.slug ?? null} preset={preset} />
+      <nav className="eye-settings-nav" aria-label="Settings sections">
+        <a href="#projects"><span>01</span>Projects</a>
+        <a href="#sources"><span>02</span>Sources</a>
+        <a href="#sync"><span>03</span>Sync</a>
+        <a href="#export"><span>04</span>Export</a>
+        <a href="#health"><span>05</span>Health</a>
+      </nav>
 
-      <div className="eye-legacy">
+      <section id="projects" className="eye-step">
+        <ProjectDirectory projects={projects} selectedSlug={selectedProject?.slug ?? null} preset={preset} />
+      </section>
+
       {selectedProject ? (
-        <>
-          <ProjectMappingPanel
-            key={selectedProject.slug}
-            projectSlug={selectedProject.slug}
-            projectLabel={selectedProject.name}
-            currentGa4PropertyId={selectedProject.ga4PropertyId}
-            currentGscSiteId={selectedProject.gscSiteId}
-          />
+        <div className="eye-legacy">
+          <section id="sources" className="eye-step">
+            <StepHead index="02" title="Sources" text={`Choose which Google properties feed ${selectedProject.name}.`} />
+            <ProjectMappingPanel
+              key={`${selectedProject.slug}-map`}
+              projectSlug={selectedProject.slug}
+              projectLabel={selectedProject.name}
+              currentGa4PropertyId={selectedProject.ga4PropertyId}
+              currentGscSiteId={selectedProject.gscSiteId}
+            />
+            <GbpLocationMappingPanel
+              key={`${selectedProject.slug}-gbp`}
+              projectSlug={selectedProject.slug}
+              projectLabel={selectedProject.name}
+            />
+            <GoogleAdsAccountMappingPanel
+              key={`${selectedProject.slug}-ads`}
+              projectSlug={selectedProject.slug}
+              projectLabel={selectedProject.name}
+            />
+          </section>
 
-          <GbpLocationMappingPanel
-            key={selectedProject.slug}
-            projectSlug={selectedProject.slug}
-            projectLabel={selectedProject.name}
-          />
+          <section id="sync" className="eye-step">
+            <StepHead index="03" title="Sync" text="Pull fresh evidence for the selected range, then review the run history." />
+            <EntitySyncPanel
+              key={`${selectedProject.slug}-sync`}
+              projectSlug={selectedProject.slug}
+              projectLabel={selectedProject.name}
+              initialFrom={from}
+              initialTo={to}
+            />
+            <SyncHealthHistoryPanel runs={syncHealthRuns} />
+          </section>
 
-          <GoogleAdsAccountMappingPanel
-            key={selectedProject.slug}
-            projectSlug={selectedProject.slug}
-            projectLabel={selectedProject.name}
-          />
+          <section id="export" className="eye-step">
+            <StepHead index="04" title="Export" text="Write this project's evidence and intelligence into a Google Sheet." />
+            <CustomerSheetExportButton
+              projectId={selectedProject.slug}
+              projectLabel={selectedProject.name}
+              from={from}
+              to={to}
+            />
+          </section>
 
-          {integrationHealth ? (
-            <IntegrationReadinessPanel health={integrationHealth} />
-          ) : null}
-
-          <EntitySyncPanel
-            key={selectedProject.slug}
-            projectSlug={selectedProject.slug}
-            projectLabel={selectedProject.name}
-            initialFrom={from}
-            initialTo={to}
-          />
-
-          <SyncHealthHistoryPanel runs={syncHealthRuns} />
-
-          <CustomerSheetExportButton
-            projectId={selectedProject.slug}
-            projectLabel={selectedProject.name}
-            from={from}
-            to={to}
-          />
-        </>
+          <section id="health" className="eye-step">
+            <StepHead index="05" title="Health" text="Connection, mapping and sync readiness for every provider." />
+            {integrationHealth ? <IntegrationReadinessPanel health={integrationHealth} /> : null}
+          </section>
+        </div>
       ) : (
         <section className="eye-alert">
           <strong>No project yet</strong>
           <span>Create a project above, or set one up from the properties available in your Google account.</span>
         </section>
       )}
-      </div>
     </main>
   );
 }

@@ -5,6 +5,7 @@ import { SignalGlobe } from "@/components/dashboard/SignalGlobe";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
 import { getOverviewEvidenceSummary } from "@/lib/evidence/normalized-overview-store";
+import { getBehaviorDetail, getSeoDetail } from "@/lib/evidence/page-insights";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -42,6 +43,17 @@ export default async function HomePage(props: PageProps) {
     ? await getOverviewEvidenceSummary({ workspaceId, projectId: project.projectSlug, from, to })
     : { ga4SourceRows: 0, ga4LandingRows: 0, gscQueryRows: 0, gscPageRows: 0, googleAdsCampaignRows: 0, gbpLocationRows: 0, failureReason: null };
 
+  const scope = project ? { workspaceId, projectSlug: project.projectSlug, from, to } : null;
+  const [seo, behavior] = scope
+    ? await Promise.all([getSeoDetail(scope), getBehaviorDetail(scope)])
+    : [null, null];
+  const performance = [
+    { label: "Sessions", value: behavior?.sessions ?? 0, note: "GA4, all sources", color: "cyan" },
+    { label: "Conversions", value: behavior?.conversions ?? 0, note: "GA4 key events", color: "violet" },
+    { label: "Organic clicks", value: seo?.clicks ?? 0, note: "Search Console", color: "green" },
+    { label: "Impressions", value: seo?.impressions ?? 0, note: "Search Console", color: "amber" },
+  ];
+
   const sources = [
     { name: "GA4 source rows", count: summary.ga4SourceRows, color: "cyan" },
     { name: "GA4 landing rows", count: summary.ga4LandingRows, color: "violet" },
@@ -56,7 +68,12 @@ export default async function HomePage(props: PageProps) {
   const unavailable = projectError || Boolean(summary.failureReason);
   const actions = unavailable
     ? ["Restore access to the project mapping and evidence store.", "Verify the database connection and reload the dashboard."]
-    : sources.filter((source) => source.count === 0).map((source) => `Sync ${source.name.replace(" rows", "")} evidence for this project.`);
+    : sources.filter((source) => source.count === 0).map((source) => {
+        const name = source.name.replace(" rows", "");
+        if (name.startsWith("Google Ads")) return "Map a Google Ads customer in Settings to add campaign evidence.";
+        if (name.startsWith("Business Profile")) return "Map a Business Profile location in Settings to add local evidence.";
+        return `Sync ${name} evidence for this project.`;
+      });
   if (!unavailable && actions.length === 0) actions.push("Review cross-source evidence and validate the next intelligence hypothesis.");
 
   const query = new URLSearchParams({ project: project?.projectSlug ?? projectRef ?? "", from, to });
@@ -87,7 +104,19 @@ export default async function HomePage(props: PageProps) {
             </div>
           )}
 
-          <section className="eye-kpis" aria-label="Evidence summary">
+          <section className="eye-kpis eye-kpis-4" aria-label="Performance summary">
+            {performance.map((item) => (
+              <div className="eye-panel eye-kpi" key={item.label}>
+                <h2>{item.label}</h2>
+                <strong className="eye-mono">{unavailable ? "—" : item.value.toLocaleString()}</strong>
+                <span>{unavailable ? "Unavailable" : item.note}</span>
+                <span className={`eye-kpi-accent eye-spark-${item.color}`} aria-hidden="true" />
+              </div>
+            ))}
+          </section>
+
+          <p className="eye-overline eye-subhead">Evidence stored for this range</p>
+          <section className="eye-kpis eye-kpis-compact" aria-label="Evidence summary">
             {sources.map((source) => (
               <div className="eye-panel eye-kpi" key={source.name}>
                 <h2>{source.name}</h2>

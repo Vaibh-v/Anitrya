@@ -268,13 +268,13 @@ button, input { font: inherit; }
 
 /* ---- Legacy settings panels: restyled to match the design system ---- */
 .eye-legacy { display: flex; flex-direction: column; gap: 16px; }
-.eye-legacy > section, .eye-legacy > div > section, .eye-legacy section[class*="rounded-"] {
+.eye-legacy .eye-step > section, .eye-legacy .eye-step > div > section, .eye-legacy section[class*="rounded-"] {
   border: 1px solid var(--eye-border) !important; border-radius: 18px !important;
   background: linear-gradient(160deg, rgba(255,255,255,.06), rgba(255,255,255,.02)) !important;
   padding: 18px !important; box-shadow: none !important;
 }
 .eye-legacy [class*="rounded-["] { border-radius: 12px !important; }
-.eye-legacy > section, .eye-legacy > div > section { border-radius: 18px !important; }
+.eye-legacy .eye-step > section, .eye-legacy .eye-step > div > section { border-radius: 18px !important; }
 .eye-legacy h2 { color: #fff !important; font-size: 17px !important; font-weight: 600 !important; letter-spacing: -.01em !important; }
 .eye-legacy h3 { font-size: 14px !important; }
 .eye-legacy [class*="text-[5"], .eye-legacy [class*="text-[4"], .eye-legacy [class*="text-[3"], .eye-legacy .text-5xl, .eye-legacy .text-4xl, .eye-legacy .text-3xl { font-size: 20px !important; line-height: 1.2 !important; }
@@ -295,3 +295,22 @@ button, input { font: inherit; }
 
 @media (max-width: 1380px) { .eye-split { grid-template-columns: minmax(0, 1fr); } }
 .eye-card-warn { margin-top: 6px !important; color: #f5c46b; font-size: 11px; }
+/* Overview: evidence counts as a compact secondary row under business KPIs */
+.eye-subhead { margin: 4px 0 -4px; }
+.eye-kpis-compact { grid-template-columns: repeat(6, minmax(0,1fr)); gap: 8px; }
+.eye-kpis-compact .eye-kpi { padding: 10px 12px; min-height: 0; }
+.eye-kpis-compact .eye-kpi strong { font-size: 18px; }
+.eye-kpis-compact .eye-kpi h2 { font-size: 11px; }
+@media (max-width: 1100px) { .eye-kpis-compact { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 560px) { .eye-kpis-compact { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+/* Settings: sticky section navigation and grouped steps */
+.eye-settings-nav { position: sticky; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid var(--eye-border); border-radius: 12px; background: rgba(6,10,20,.85); backdrop-filter: blur(8px); padding: 6px; }
+.eye-settings-nav a { border-radius: 8px; padding: 6px 12px; color: var(--eye-muted); font-size: 12px; font-weight: 600; }
+.eye-settings-nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.eye-settings-nav a span { margin-right: 6px; color: var(--eye-cyan); font-family: var(--font-mono, monospace); }
+.eye-step { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 70px; }
+.eye-step-head { display: flex; align-items: baseline; gap: 10px; margin-top: 8px; }
+.eye-step-head span { color: var(--eye-cyan); font-family: var(--font-mono, monospace); font-size: 12px; }
+.eye-step-head h2 { margin: 0; color: #fff; font-size: 16px; font-weight: 600; }
+.eye-step-head p { margin: 0; color: var(--eye-muted); font-size: 12px; }
+.eye-legacy .eye-step-head h2 { font-size: 16px !important; }
