@@ -105,6 +105,12 @@ let pending: Promise<void> | null = null;
 export function ensureAdditiveSchema(): Promise<void> {
   if (!pending) {
     pending = (async () => {
+      // One round trip in the common case: skip all DDL when every table exists.
+      const present = await prisma.$queryRawUnsafe<Array<{ ok: boolean }>>(
+        `SELECT (to_regclass('"SyncHealthRun"') IS NOT NULL AND to_regclass('gbp_location_daily') IS NOT NULL
+                 AND to_regclass('google_ads_campaign_daily') IS NOT NULL AND to_regclass('semrush_evidence_snapshot') IS NOT NULL) AS ok`,
+      );
+      if (present[0]?.ok) return;
       for (const statement of STATEMENTS) {
         await prisma.$executeRawUnsafe(statement);
       }
