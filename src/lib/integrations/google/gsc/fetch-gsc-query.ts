@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { fetchAllGscRows } from "@/lib/integrations/google/gsc/fetch-gsc-rows";
 
 type Input = {
   workspaceId: string;
@@ -22,38 +23,14 @@ function escapeSql(value: string): string {
 }
 
 export async function fetchGSCQueryDaily(input: Input): Promise<number> {
-  const response = await fetch(
-    `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(
-      input.siteUrl,
-    )}/searchAnalytics/query`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${input.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        startDate: input.from,
-        endDate: input.to,
-        dimensions: ["date", "query"],
-        rowLimit: 25000,
-      }),
-    },
-  );
-
-  const payload = (await response.json()) as {
-    rows?: GscRow[];
-    error?: { message?: string };
-  };
-
-  if (!response.ok) {
-    throw new Error(
-      payload.error?.message ??
-        `GSC query sync failed for site ${input.siteUrl}.`,
-    );
-  }
-
-  const rows = payload.rows ?? [];
+  const rows: GscRow[] = await fetchAllGscRows({
+    siteUrl: input.siteUrl,
+    accessToken: input.accessToken,
+    from: input.from,
+    to: input.to,
+    dimensions: ["date", "query"],
+    label: "query",
+  });
 
   await prisma.$executeRawUnsafe(`
     DELETE FROM gsc_query_daily
@@ -82,7 +59,9 @@ export async function fetchGSCQueryDaily(input: Input): Promise<number> {
     })
     .filter((value): value is string => Boolean(value));
 
-  if (normalizedRows.length > 0) {
+  // Insert in chunks so a large site never builds one oversized statement.
+  for (let offset = 0; offset < normalizedRows.length; offset += 2000) {
+    const chunk = normalizedRows.slice(offset, offset + 2000);
     await prisma.$executeRawUnsafe(`
       INSERT INTO gsc_query_daily (
         workspace_id,
@@ -94,7 +73,7 @@ export async function fetchGSCQueryDaily(input: Input): Promise<number> {
         ctr,
         position
       )
-      VALUES ${normalizedRows.join(",\n")}
+      VALUES ${chunk.join(",\n")}
     `);
   }
 

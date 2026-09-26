@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleProjectProviderSync } from "@/lib/integrations/handle-project-provider-sync";
 import type { IntegrationSyncProvider } from "@/lib/integrations/sync-contracts";
 
+// Large properties page through several API responses; allow the full serverless budget.
+export const maxDuration = 300;
+
 const PROVIDERS: Record<string, IntegrationSyncProvider> = {
   ga4: "GOOGLE_GA4",
   gsc: "GOOGLE_GSC",
