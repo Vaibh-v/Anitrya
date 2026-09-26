@@ -5,6 +5,16 @@ export type IntelligenceCategory =
   | "source_concentration"
   | "market_context"
   | "data_gap"
+  | "traffic_change"
+  | "ranking_movement"
+  | "ctr_gap"
+  | "striking_distance"
+  | "page_decay"
+  | "landing_quality"
+  | "conversion_leak"
+  | "brand_split"
+  | "anomaly"
+  | "spam_signal"
   | "other";
 
 export type IntelligenceSeverity = "low" | "medium" | "high";
@@ -145,6 +155,16 @@ export type IntelligenceInsight = {
   modelProvider: string;
   modelVersion: string;
   generatedAt: string;
+  /** v2 engine: impact in its own unit (clicks, sessions, conversions…). */
+  impactValue?: number;
+  impactUnit?: string;
+  /** 0–1, from sample size and comparison coverage. */
+  confidence?: number;
+  /** Current vs previous equal window, when the finding is a comparison. */
+  comparison?: { label: string; current: number; previous: number; unit: string };
+  /** Compact evidence rows shown under the finding. */
+  rows?: Array<{ label: string; values: string[] }>;
+  rowHeaders?: string[];
 };
 
 export type IntelligenceRecommendation = {

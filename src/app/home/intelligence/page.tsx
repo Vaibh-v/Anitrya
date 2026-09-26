@@ -64,7 +64,7 @@ export default async function IntelligencePage(props: PageProps) {
         <PageHeading
           overline="Anitrya / Intelligence"
           title="Intelligence read"
-          description="Evidence-backed findings and ranked actions, generated from the project's normalized GA4, Search Console, Ads and Business Profile evidence."
+          description="Ranked findings that compare this period with the previous one, each with its impact, confidence and exact next step."
           projectLabel={project.projectLabel}
           from={from}
           to={to}
@@ -92,21 +92,46 @@ export default async function IntelligencePage(props: PageProps) {
         <article className="eye-panel">
           <h2>Findings <span className="eye-tag">{insights.length}</span></h2>
           <div className="eye-findings">
-            {insights.map((insight) => (
+            {insights.map((insight, index) => (
               <div key={insight.insightId} className="eye-finding">
                 <div className="eye-finding-head">
+                  <span className="eye-finding-rank eye-mono">{String(index + 1).padStart(2, "0")}</span>
                   <strong>{insight.title}</strong>
                   <span className={`eye-tag ${SEVERITY_TAG[insight.severity] ?? ""}`}>{insight.severity}</span>
-                  <span className="eye-tag">{insight.category}</span>
                 </div>
                 <p>{insight.finding}</p>
+                {insight.rows && insight.rows.length > 0 ? (
+                  <div className="eye-table-wrap">
+                    <table className="eye-table eye-finding-table">
+                      {insight.rowHeaders ? (
+                        <thead>
+                          <tr>
+                            {insight.rowHeaders.map((header, i) => (
+                              <th key={header} className={i === 0 ? "" : "eye-num"}>{header}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                      ) : null}
+                      <tbody>
+                        {insight.rows.map((row) => (
+                          <tr key={row.label}>
+                            <td className="eye-cell-label" title={row.label}>{row.label}</td>
+                            {row.values.map((value, i) => (
+                              <td key={i} className="eye-num eye-mono">{value}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+                <p className="eye-finding-action"><span>Do this</span>{insight.recommendedAction}</p>
                 {insight.rationale ? <p className="eye-finding-muted">{insight.rationale}</p> : null}
                 <div className="eye-finding-foot">
-                  <span>Evidence: {insight.evidenceSummary || "—"}</span>
-                  <span>Data: {insight.dataSufficiency}</span>
-                  {insight.impactEstimatedClicks > 0 ? <span>~{formatNumber(insight.impactEstimatedClicks)} clicks at stake</span> : null}
+                  {insight.impactValue ? <span>Impact ≈ {formatNumber(insight.impactValue)} {insight.impactUnit}</span> : null}
+                  {typeof insight.confidence === "number" ? <span>Confidence {Math.round(insight.confidence * 100)}%</span> : <span>Data: {insight.dataSufficiency}</span>}
+                  <span>Priority {insight.priorityScore}</span>
                 </div>
-                {insight.missingData.length > 0 ? <p className="eye-finding-muted">Missing: {insight.missingData.join(", ")}</p> : null}
               </div>
             ))}
             {insights.length === 0 ? <p className="eye-panel-text">No findings for this range.</p> : null}

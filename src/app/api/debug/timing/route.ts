@@ -47,5 +47,13 @@ export async function GET(request: NextRequest) {
   }
   timings.total = Date.now() - t0;
   timings.region = process.env.VERCEL_REGION ?? "unknown";
+  try {
+    // Hostname only (no credentials) so the database region can be matched.
+    timings.dbHost = new URL(process.env.DATABASE_URL ?? "").hostname;
+  } catch {
+    timings.dbHost = "unparseable";
+  }
+  const version = await prisma.$queryRawUnsafe<Array<{ v: string }>>("SELECT version() AS v").catch(() => []);
+  timings.dbVersion = version[0]?.v?.slice(0, 60) ?? "";
   return NextResponse.json(timings);
 }
