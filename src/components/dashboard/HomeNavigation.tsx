@@ -19,6 +19,7 @@ export function HomeNavigation() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [projects, setProjects] = useState<Array<{ slug: string; name: string }>>([]);
+  const [syncing, setSyncing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const project = searchParams.get("project");
   const activeProject = project ?? projects[0]?.slug ?? null;
@@ -68,6 +69,42 @@ export function HomeNavigation() {
     return () => controller.abort();
   }, []);
 
+  // Instant Insight: start the background sync as soon as a signed-in user
+  // opens the app, then refresh the page as each stage lands.
+  useEffect(() => {
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    try {
+      const last = Number(sessionStorage.getItem("anitrya:auto-sync") ?? 0);
+      if (Date.now() - last < 30 * 60_000) return;
+      sessionStorage.setItem("anitrya:auto-sync", String(Date.now()));
+    } catch {
+      /* storage unavailable: still sync */
+    }
+    fetch("/api/sync/auto", { method: "POST" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload || (payload.status !== "started" && payload.status !== "running")) return;
+        setSyncing(true);
+        for (const delay of [10_000, 30_000, 60_000]) timers.push(setTimeout(() => router.refresh(), delay));
+        const poll = async () => {
+          const status = await fetch("/api/sync/auto", { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+          if (cancelled) return;
+          if (status?.running) timers.push(setTimeout(poll, 8_000));
+          else {
+            setSyncing(false);
+            router.refresh();
+          }
+        };
+        timers.push(setTimeout(poll, 8_000));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+  }, [router]);
+
   useEffect(() => {
     function handleKeys(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -113,6 +150,11 @@ export function HomeNavigation() {
         <button className="eye-pill eye-search-trigger" type="button" onClick={() => setOpen(true)}>
           Search <span className="eye-kbd">Ctrl K</span>
         </button>
+        {syncing ? (
+          <span className="eye-pill eye-sync-pill" role="status" aria-live="polite">
+            <span className="eye-sync-dot" aria-hidden="true" />Updating
+          </span>
+        ) : null}
         <span className="eye-pill eye-workspace-pill">Workspace</span>
       </header>
       <nav className="eye-nav" aria-label="Primary navigation">
