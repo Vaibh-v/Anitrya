@@ -9,11 +9,16 @@ import {
 import {
   appendRows,
   clearAndWriteSheet,
+  ensureSheetStructure,
   readSheetValues,
   upsertRowByKey,
 } from "@/lib/intelligence/owner-network/google-sheets";
 import { ensureOwnerCustomerSheet } from "@/lib/intelligence/owner-network/customer-sheet-network";
 import type { IntegrationSyncResult } from "@/lib/integrations/sync-contracts";
+import {
+  loadSemrushExportDataset,
+  type SemrushExportStatus,
+} from "@/lib/integrations/semrush/semrush-export-adapter";
 
 type ExportNormalizedProjectDataInput = {
   workspaceId: string;
@@ -36,6 +41,73 @@ function nowIso() {
 
 function stringify(value: unknown) {
   return JSON.stringify(value ?? null);
+}
+
+// Sheets writes here use USER_ENTERED; keep SEMrush free-text cells literal.
+function asLiteralText(value: string) {
+  return /^[=+\-@]/.test(value) ? `'${value}` : value;
+}
+
+async function mirrorSemrushEvidence(input: {
+  customerSpreadsheetId: string;
+  workspaceId: string;
+  projectId: string;
+  projectSlug: string;
+  projectLabel: string;
+  from: string;
+  to: string;
+}): Promise<SemrushExportStatus> {
+  try {
+    const dataset = await loadSemrushExportDataset({
+      workspaceId: input.workspaceId,
+      projectSlug: input.projectSlug,
+      from: input.from,
+      to: input.to,
+      prefix: {
+        workspace_id: input.workspaceId,
+        project_id: input.projectId,
+        project_slug: input.projectSlug,
+        project_label: input.projectLabel,
+      },
+    });
+
+    if (!dataset) {
+      return {
+        status: "skipped",
+        reason: "No SEMrush evidence stored for this project and window.",
+      };
+    }
+
+    const textColumns = new Set(
+      ["keyword", "page_url"].map((column) => dataset.header.indexOf(column)),
+    );
+    const rows = dataset.rows.map((row) =>
+      row.map((cell, index) => (textColumns.has(index) ? asLiteralText(cell) : cell)),
+    );
+
+    await ensureSheetStructure(input.customerSpreadsheetId, {
+      [CUSTOMER_TABS.semrushEvidence]: dataset.header,
+    });
+    await clearAndWriteSheet(
+      input.customerSpreadsheetId,
+      CUSTOMER_TABS.semrushEvidence,
+      [dataset.header, ...rows],
+    );
+
+    return {
+      status: "written",
+      tab: CUSTOMER_TABS.semrushEvidence,
+      rows: dataset.rowCount,
+      snapshotDate: dataset.snapshotDate,
+    };
+  } catch (error) {
+    // Never let the SEMrush mirror break the owner export.
+    console.error("OWNER_EXPORT_SEMRUSH_FAILED", error);
+    return {
+      status: "error",
+      reason: error instanceof Error ? error.message : "SEMrush mirror failed.",
+    };
+  }
 }
 
 function buildCustomerSheetUrl(spreadsheetId: string) {
@@ -255,10 +327,21 @@ export async function exportNormalizedProjectDataToOwnerSheet(
     headers: [...CUSTOMER_HEADERS[CUSTOMER_TABS.gbpLocationDaily]],
   });
 
+  const semrush = await mirrorSemrushEvidence({
+    customerSpreadsheetId: network.customerSpreadsheetId,
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    projectSlug: input.projectSlug,
+    projectLabel: input.projectLabel,
+    from: input.from,
+    to: input.to,
+  });
+
   return {
     masterSpreadsheetId: network.masterSpreadsheetId,
     customerSheetId: network.customerSpreadsheetId,
     syncedAt,
+    semrush,
     summary: stringify(
       input.results.map((result) => ({
         provider: result.provider,

@@ -410,6 +410,35 @@ model gbp_location_daily {
   @@index([workspace_id, project_slug, metric, date], map: "idx_gbp_location_daily_workspace_project_metric_date")
 }
 
+/// SEMrush external SEO evidence. One row per (project, snapshot date, entity, metric).
+/// Written only by src/lib/integrations/connectors/semrush-sync.ts (raw SQL).
+model semrush_evidence_snapshot {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspace_id   String
+  project_slug   String
+  date           DateTime  @db.Date
+  window_from    DateTime  @db.Date
+  window_to      DateTime  @db.Date
+  domain         String
+  database_code  String
+  report_type    String
+  entity_type    String
+  keyword        String?
+  page_url       String?
+  metric         String
+  value          Float?
+  source         String    @default("semrush")
+  source_version String    @default("analytics_v3")
+  availability   String    @default("available")
+  confidence     String    @default("medium")
+  is_estimate    Boolean   @default(true)
+  fetched_at     DateTime  @default(now()) @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([workspace_id, project_slug, date], map: "idx_semrush_evidence_snapshot_workspace_project_date")
+  @@index([workspace_id, project_slug, domain, database_code, date], map: "idx_semrush_evidence_snapshot_workspace_project_domain_date")
+}
+
 model intelligence_history {
   id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspace_id       String

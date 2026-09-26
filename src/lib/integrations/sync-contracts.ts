@@ -4,7 +4,8 @@ export type IntegrationSyncProvider =
   | "GOOGLE_GA4"
   | "GOOGLE_GSC"
   | "GOOGLE_ADS"
-  | "GOOGLE_GBP";
+  | "GOOGLE_GBP"
+  | "SEMRUSH";
 
 export type IntegrationSyncStatus = "success" | "error" | "skipped";
 

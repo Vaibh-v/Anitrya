@@ -13,6 +13,11 @@ import {
 } from "@/lib/integrations/provider-registry";
 import { readGoogleAdsAccountMappingFromMetadata } from "@/lib/integrations/google/ads/account-mapping-ledger";
 import { readGbpLocationMappingFromMetadata } from "@/lib/integrations/google/gbp/location-mapping-ledger";
+import { readSemrushDomainMappingFromMetadata } from "@/lib/integrations/semrush/semrush-mapping-ledger";
+import {
+  getSemrushReadiness,
+  type SemrushReadiness,
+} from "@/lib/integrations/semrush/semrush-readiness";
 import type {
   ProviderHealthRecord,
   ProviderHealthState,
@@ -144,6 +149,7 @@ function findLatestSyncRun(input: {
         run.source === source &&
         !readGoogleAdsAccountMappingFromMetadata(run.metadata) &&
         !readGbpLocationMappingFromMetadata(run.metadata) &&
+        !readSemrushDomainMappingFromMetadata(run.metadata) &&
         metadataMatchesProject(run.metadata, input.projectId)
     ) ?? null
   );
@@ -306,11 +312,19 @@ export async function buildProviderHealthSummary(
           OR: [{ id: projectId }, { slug: projectId }, { name: projectId }],
         },
         select: {
+          slug: true,
           ga4PropertyId: true,
           gscSiteId: true,
         },
       })
     : null;
+
+  // SEMrush readiness is resolved once (encrypted key + project domain
+  // mapping + evidence storage). Failures degrade to "not connected".
+  const semrushReadiness: SemrushReadiness | null = await getSemrushReadiness({
+    workspaceId,
+    projectSlug: projectMapping?.slug ?? null,
+  }).catch(() => null);
 
   const tokenKeys = new Set<IntegrationKey>();
   for (const token of tokens) {
@@ -320,12 +334,17 @@ export async function buildProviderHealthSummary(
 
   const records: ProviderHealthRecord[] = PROVIDER_REGISTRY.map((provider) => {
     const capabilities = getProviderCapabilityMatrix(provider);
-    const connected = hasProviderConnection({
-      providerKey: provider.key,
-      tokens,
-      tokenKeys,
-    });
-    const mapped = provider.requiresProjectMapping
+    const isSemrush = provider.key === "semrush";
+    const connected = isSemrush
+      ? Boolean(semrushReadiness?.connected)
+      : hasProviderConnection({
+          providerKey: provider.key,
+          tokens,
+          tokenKeys,
+        });
+    const mapped = isSemrush
+      ? Boolean(semrushReadiness?.mapped)
+      : provider.requiresProjectMapping
       ? hasProjectMapping({
           providerKey: provider.key,
           projectId,
@@ -333,21 +352,28 @@ export async function buildProviderHealthSummary(
           runs: syncRuns,
         })
       : true;
-    const syncCapable = connected && capabilities.canSync.enabled && mapped;
+    const storageReady = isSemrush ? Boolean(semrushReadiness?.storageReady) : true;
+    const syncCapable =
+      connected && capabilities.canSync.enabled && mapped && storageReady;
     const evidenceReady =
       connected &&
       mapped &&
+      storageReady &&
       capabilities.canExportEvidence.enabled &&
       (provider.key === "google_ga4" ||
         provider.key === "google_gsc" ||
         provider.key === "google_ads" ||
-        provider.key === "google_business_profile");
+        provider.key === "google_business_profile" ||
+        provider.key === "semrush");
     const intelligenceReady =
       connected && mapped && capabilities.canPowerIntelligence.enabled;
 
     const blockers = [
       ...(provider.blockedByDefault ?? []),
       ...providerSpecificBlockers(provider.key),
+      ...(isSemrush
+        ? semrushReadiness?.blockers ?? ["SEMrush readiness could not be evaluated."]
+        : []),
       ...Object.values(capabilities)
         .filter((capability) => capability.state === "blocked")
         .map((capability) => capability.reason),
@@ -398,7 +424,9 @@ export async function buildProviderHealthSummary(
       missingRequirements,
       capabilities,
       blockers,
-      nextAction: connected
+      nextAction: isSemrush && semrushReadiness
+        ? semrushReadiness.nextAction
+        : connected
         ? capabilities.canSync.enabled
           ? "Validate mapping and run sync to confirm normalized evidence."
           : "Keep preserved until the provider is formally activated."

@@ -17,6 +17,8 @@ export const CUSTOMER_TABS = {
   gscPageDaily: "gsc_page_daily",
   googleAdsCampaignDaily: "google_ads_campaign_daily",
   gbpLocationDaily: "gbp_location_daily",
+  // Written only when SEMrush evidence exists for the project (see semrush-export-adapter).
+  semrushEvidence: "semrush_evidence",
 } as const;
 
 export const OWNER_SYNC_MODE = "project_scoped_backend_mirror";
