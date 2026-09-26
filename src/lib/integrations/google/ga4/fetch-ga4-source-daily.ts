@@ -45,9 +45,9 @@ export async function fetchGA4SourceDaily(input: Input): Promise<number> {
       },
       body: JSON.stringify({
         dateRanges: [{ startDate: input.from, endDate: input.to }],
-        dimensions: [{ name: "date" }, { name: "sessionSource" }],
-        metrics: [{ name: "sessions" }],
-        limit: 10000,
+        dimensions: [{ name: "date" }, { name: "sessionSource" }, { name: "sessionMedium" }],
+        metrics: [{ name: "sessions" }, { name: "totalUsers" }, { name: "engagedSessions" }, { name: "keyEvents" }],
+        limit: 100000,
       }),
     },
   );
@@ -78,7 +78,8 @@ export async function fetchGA4SourceDaily(input: Input): Promise<number> {
     .map((row) => {
       const date = normalizeGaDate(row.dimensionValues?.[0]?.value ?? "");
       const source = row.dimensionValues?.[1]?.value ?? "(not set)";
-      const sessions = Number(row.metricValues?.[0]?.value ?? "0");
+      const medium = row.dimensionValues?.[2]?.value ?? "";
+      const metric = (index: number) => Math.round(Number(row.metricValues?.[index]?.value ?? "0")) || 0;
 
       if (!date) return null;
 
@@ -87,21 +88,31 @@ export async function fetchGA4SourceDaily(input: Input): Promise<number> {
         '${escapeSql(input.projectSlug)}',
         DATE '${escapeSql(date)}',
         '${escapeSql(source)}',
-        ${Number.isFinite(sessions) ? sessions : 0}
+        '${escapeSql(medium)}',
+        ${metric(0)},
+        ${metric(1)},
+        ${metric(2)},
+        ${metric(3)}
       )`;
     })
     .filter((value): value is string => Boolean(value));
 
-  if (normalizedRows.length > 0) {
+  // Insert in chunks so a large property never builds one oversized statement.
+  for (let offset = 0; offset < normalizedRows.length; offset += 2000) {
+    const chunk = normalizedRows.slice(offset, offset + 2000);
     await prisma.$executeRawUnsafe(`
       INSERT INTO ga4_source_daily (
         workspace_id,
         project_slug,
         date,
         source,
-        sessions
+        medium,
+        sessions,
+        users,
+        engaged_sessions,
+        conversions
       )
-      VALUES ${normalizedRows.join(",\n")}
+      VALUES ${chunk.join(",\n")}
     `);
   }
 
