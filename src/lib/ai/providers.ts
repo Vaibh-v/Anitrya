@@ -96,6 +96,8 @@ export class ProviderError extends Error {
   }
 }
 
+const GITHUB_LEGACY_URL = "https://models.inference.ai.azure.com";
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -127,6 +129,16 @@ export async function complete(provider: ProviderConfig, system: string, user: s
     }
     const status = lastError instanceof ProviderError ? lastError.status : 0;
     if (![400, 404, 429, 0].includes(status) || (status === 0 && !isEmptyReply(lastError))) break;
+  }
+  // GitHub Models also serves the same models from its original Azure endpoint;
+  // use it when the new endpoint answers without a completion.
+  if (provider.id === "github" && isEmptyReply(lastError) && deadline - Date.now() > 3000) {
+    const legacy = { ...provider, baseUrl: GITHUB_LEGACY_URL };
+    try {
+      return await completeWith(legacy, key, models[0].replace(/^[^/]+\//, ""), system, user, deadline - Date.now());
+    } catch (error) {
+      lastError = new Error(`${(lastError as Error).message}; legacy endpoint: ${error instanceof Error ? error.message.replace(/^GitHub Models:? ?/, "") : "failed"}`);
+    }
   }
   throw lastError instanceof Error ? lastError : new Error("Request failed");
 }
@@ -235,8 +247,9 @@ async function completeWith(provider: ProviderConfig, key: string, model: string
   if (!response.ok) throw httpError(provider, response, payload, text);
   const reply = messageText(payload);
   if (!reply.trim()) {
-    const reason = payload?.choices?.[0]?.finish_reason ?? (payload?.choices ? "no content" : text.slice(0, 80) || "no choices");
-    throw new Error(`${provider.label}: empty reply (${reason})`);
+    const reason = payload?.choices?.[0]?.finish_reason ?? (payload?.choices ? "no content" : `body "${text.slice(0, 60)}"`);
+    const where = response.redirected ? `, redirected to ${new URL(response.url).host}` : "";
+    throw new Error(`${provider.label}: empty reply (${reason}, ${response.headers.get("content-type") ?? "no content-type"}${where})`);
   }
   return reply;
 }

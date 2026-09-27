@@ -63,3 +63,23 @@ test("rate-limited model falls through to the next one", async () => {
     delete process.env.OPENROUTER_API_KEY;
   }
 });
+
+test("GitHub Models falls back to its legacy endpoint on a non-completion reply", async () => {
+  const p = await import("../src/lib/ai/providers.ts");
+  const provider = p.PROVIDERS.find((x) => x.id === "github");
+  process.env.GITHUB_MODELS_TOKEN = "t";
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, init) => {
+    seen.push([String(url), JSON.parse(init.body).model]);
+    if (String(url).startsWith("https://models.github.ai")) return new Response("OK", { status: 200 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 });
+  };
+  try {
+    assert.equal(await p.complete(provider, "s", "u"), "{}");
+    assert.deepEqual(seen.at(-1), ["https://models.inference.ai.azure.com/chat/completions", "gpt-4o-mini"]);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.GITHUB_MODELS_TOKEN;
+  }
+});
