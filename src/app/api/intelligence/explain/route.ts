@@ -7,6 +7,8 @@ import { evidenceHash, runConsensus } from "@/lib/ai/consensus";
 import { recallConsensus, rememberConsensus } from "@/lib/ai/memory";
 import { availableProviders, providerSummary } from "@/lib/ai/providers";
 import { resolveFounderWorkspaceId } from "@/lib/intelligence/owner-network/owner-auth";
+import { prisma } from "@/lib/prisma";
+import { canSeeProject, requirePermission } from "@/lib/org/access";
 
 export const maxDuration = 60;
 
@@ -25,7 +27,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "project, insightId, from and to are required." }, { status: 400 });
   }
 
+  const access = await requirePermission("ai");
+  if (access instanceof NextResponse) return access;
+
   const project = await getProjectMapping({ ref: body.project, workspaceId });
+  if (!canSeeProject(access, project.projectSlug)) {
+    return NextResponse.json({ ok: false, error: "You don't have access to this project." }, { status: 403 });
+  }
   const output = await cachedIntelligence({
     workspaceId,
     projectId: project.projectId,
@@ -41,6 +49,18 @@ export async function POST(request: Request) {
   const hash = evidenceHash(insight, question?.trim() || "Why is this happening, and what should we do first?");
   const remembered = await recallConsensus(workspaceId, hash);
   if (remembered) return NextResponse.json({ ok: true, cached: true, consensus: remembered });
+
+  // Plan allowance: only fresh (non-remembered) answers count.
+  const used = await prisma
+    .$queryRawUnsafe<Array<{ n: bigint }>>(
+      `SELECT COUNT(*)::bigint AS n FROM ai_memory WHERE workspace_id = $1 AND created_at >= date_trunc('month', NOW())`,
+      workspaceId,
+    )
+    .then((r) => Number(r[0]?.n ?? 0))
+    .catch(() => 0);
+  if (used >= access.limits.aiPerMonth) {
+    return NextResponse.json({ ok: false, error: `This month's ${access.limits.aiPerMonth} AI questions on the ${access.limits.label} plan are used up.` }, { status: 429 });
+  }
 
   // Free tiers that may train on prompts only ever see the founder's own test data.
   const isFounder = workspaceId === (await resolveFounderWorkspaceId());

@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/org/access";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -19,6 +20,8 @@ function isGoogleAdsAccountAsset(
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requirePermission("manage_sources");
+  if (guard instanceof NextResponse) return guard;
   try {
     const session = await requireSession();
     const workspaceId = session.user?.workspaceId;

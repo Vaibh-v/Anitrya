@@ -5,6 +5,7 @@ import { SignalGlobe } from "@/components/dashboard/SignalGlobe";
 import { PageTip } from "@/components/dashboard/PageTip";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
+import { scopedProjectRef } from "@/lib/org/access";
 import { cachedBehaviorDetail, cachedOverviewSummary, cachedSeoDetail } from "@/lib/evidence/cached";
 
 type PageProps = {
@@ -34,7 +35,7 @@ export default async function HomePage(props: PageProps) {
   let project: Awaited<ReturnType<typeof getProjectMapping>> | null = null;
   let projectError = false;
   try {
-    project = await getProjectMapping({ ref: projectRef, workspaceId });
+    project = await getProjectMapping({ ref: await scopedProjectRef(projectRef), workspaceId });
   } catch {
     projectError = true;
   }

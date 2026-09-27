@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/route-helpers";
 import { prisma } from "@/lib/prisma";
 import { createWorkspaceProject } from "@/lib/projects";
+import { audit, getAccess, requirePermission } from "@/lib/org/access";
 
 export async function GET() {
   try {
@@ -16,9 +17,13 @@ export async function GET() {
       orderBy: { name: "asc" }
     });
 
+    // Members limited to certain projects only see those.
+    const access = await getAccess();
+    const visible = access?.projectScope ? projects.filter((p) => access.projectScope!.includes(p.slug)) : projects;
+
     return NextResponse.json({
       ok: true,
-      projects
+      projects: visible
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "UNKNOWN_ERROR";
@@ -31,6 +36,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const guard = await requirePermission("manage_projects");
+  if (guard instanceof NextResponse) return guard;
+  const existingCount = await prisma.project.count({ where: { workspaceId: guard.workspaceId } });
+  if (existingCount >= guard.limits.projects) {
+    return NextResponse.json({ ok: false, error: `Your ${guard.limits.label} plan includes ${guard.limits.projects} projects.` }, { status: 403 });
+  }
   try {
     const { workspace } = await requireAuth();
     const body = await request.json();
@@ -58,6 +69,8 @@ export async function POST(request: NextRequest) {
       ga4PropertyId,
       gscSiteId
     });
+
+    await audit(guard, "project.created", { name, slug: project.slug });
 
     return NextResponse.json({
       ok: true,

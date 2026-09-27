@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getActiveWorkspace } from "@/lib/org/members";
 
 function slugify(value: string) {
   return value
@@ -12,6 +13,17 @@ export async function ensureWorkspaceForUser(params: {
   userId: string;
   email: string;
 }) {
+  // The organization the user last switched to (or joined by invite) wins,
+  // as long as they are still a member of it.
+  const active = await getActiveWorkspace(params.userId);
+  if (active) {
+    const activeMembership = await prisma.membership.findFirst({
+      where: { userId: params.userId, workspaceId: active },
+      include: { workspace: true },
+    });
+    if (activeMembership) return activeMembership.workspace;
+  }
+
   const existingMembership = await prisma.membership.findFirst({
     where: { userId: params.userId },
     include: { workspace: true },

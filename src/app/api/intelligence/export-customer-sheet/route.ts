@@ -1,3 +1,4 @@
+import { canSeeProject, requirePermission } from "@/lib/org/access";
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { requireSession } from "@/lib/auth";
@@ -97,6 +98,8 @@ async function writeSheetValues(args: {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requirePermission("export");
+  if (guard instanceof NextResponse) return guard;
   try {
     const session = await requireSession();
     const workspaceId = asString(session.user?.workspaceId);
@@ -142,6 +145,10 @@ export async function POST(req: NextRequest) {
         { error: "Project not found." },
         { status: 404 },
       );
+    }
+
+    if (!canSeeProject(guard, project.slug)) {
+      return NextResponse.json({ error: "You don't have access to this project." }, { status: 403 });
     }
 
     const accessToken = await getGoogleSheetsAccessTokenForWorkspace(

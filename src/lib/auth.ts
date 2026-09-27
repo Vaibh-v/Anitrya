@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureWorkspaceForUser } from "@/lib/workspace";
 import { authProviders } from "@/lib/auth.config";
 import { encryptSecret } from "@/lib/security/crypto";
+import { acceptInvitesForUser } from "@/lib/org/members";
 
 const GOOGLE_WORKSPACE_PROVIDERS: IntegrationProvider[] = [
   IntegrationProvider.GOOGLE_GA4,
@@ -70,12 +71,33 @@ export const authOptions: NextAuthOptions = {
         },
       });
 
+      // Join any organizations this email was invited to before picking the workspace.
+      await acceptInvitesForUser({ userId: dbUser.id, email: dbUser.email });
+
       const workspace = await ensureWorkspaceForUser({
         userId: dbUser.id,
         email: dbUser.email,
       });
 
-      if (account?.provider === "google") {
+      // Only the organization's owner/admin connects its Google sources. An
+      // invited analyst or viewer signing in must never replace them.
+      const membership = await prisma.membership.findFirst({
+        where: { userId: dbUser.id, workspaceId: workspace.id },
+        select: { role: true },
+      });
+      const firstMember = await prisma.membership.findFirst({
+        where: { workspaceId: workspace.id },
+        orderBy: { createdAt: "asc" },
+        select: { userId: true },
+      });
+      const hasGoogleTokens = (await prisma.integrationToken.count({
+        where: { workspaceId: workspace.id, provider: { in: GOOGLE_WORKSPACE_PROVIDERS } },
+      })) > 0;
+      const role = String(membership?.role ?? "");
+      const mayConnectSources =
+        !hasGoogleTokens || role === "OWNER" || firstMember?.userId === dbUser.id;
+
+      if (account?.provider === "google" && mayConnectSources) {
         const existingTokens = await prisma.integrationToken.findMany({
           where: {
             workspaceId: workspace.id,
@@ -141,15 +163,22 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       const email = user?.email ?? (typeof token.email === "string" ? token.email : null);
 
+      // Re-resolve the active organization every few seconds, so switching
+      // organizations, accepting an invite or being removed takes effect
+      // without signing out.
+      const checkedAt = typeof token.workspaceCheckedAt === "number" ? token.workspaceCheckedAt : 0;
       if (
         email &&
-        (typeof token.userId !== "string" || typeof token.workspaceId !== "string")
+        (typeof token.userId !== "string" ||
+          typeof token.workspaceId !== "string" ||
+          Date.now() - checkedAt > 5_000)
       ) {
         const sessionContext = await getSessionContextByEmail(email);
 
         if (sessionContext) {
           token.userId = sessionContext.userId;
           token.workspaceId = sessionContext.workspaceId;
+          token.workspaceCheckedAt = Date.now();
         }
       }
 

@@ -20,6 +20,28 @@ export function HomeNavigation() {
   const [search, setSearch] = useState("");
   const [projects, setProjects] = useState<Array<{ slug: string; name: string }>>([]);
   const [syncing, setSyncing] = useState(false);
+  const [org, setOrg] = useState<{
+    roleLabel: string;
+    planLabel: string;
+    status: string;
+    trialDaysLeft: number | null;
+    isFounder: boolean;
+    activeWorkspaceId: string;
+    organizations: Array<{ id: string; name: string }>;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/org/me", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((payload) => payload?.ok && setOrg(payload))
+      .catch(() => {});
+  }, []);
+
+  async function switchOrg(workspaceId: string) {
+    await fetch("/api/org/switch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId }) });
+    // The session picks up the new organization within a few seconds.
+    setTimeout(() => (window.location.href = "/home"), 5500);
+  }
   const inputRef = useRef<HTMLInputElement>(null);
   const project = searchParams.get("project");
   const activeProject = project ?? projects[0]?.slug ?? null;
@@ -155,6 +177,20 @@ export function HomeNavigation() {
             <span className="eye-sync-dot" aria-hidden="true" />Updating
           </span>
         ) : null}
+        {org && org.status === "readonly" ? (
+          <span className="eye-pill eye-pill-warn" title="The trial has ended. Everything is kept; choose a plan to continue syncing.">Read-only</span>
+        ) : org && org.trialDaysLeft !== null ? (
+          <span className="eye-pill" title={`${org.planLabel} plan`}>Trial · {org.trialDaysLeft}d left</span>
+        ) : null}
+        {org && org.organizations.length > 1 ? (
+          <label className="eye-pill eye-project-name">
+            <span className="sr-only">Organization</span>
+            <select aria-label="Organization" value={org.activeWorkspaceId} onChange={(event) => switchOrg(event.target.value)}>
+              {org.organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </label>
+        ) : null}
+        {org?.isFounder ? <a className="eye-pill" href="/founder">Founder</a> : null}
         <a className="eye-pill" href="/help">Help</a>
         <span className="eye-pill eye-workspace-pill">Workspace</span>
       </header>

@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ensureAdditiveSchema } from "@/lib/db/ensure-additive-schema";
+import { isOrgWritable } from "@/lib/org/access";
 import {
   claimAutoSync,
   isAutoSyncRunning,
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   const workspaceId = await workspace();
   if (!workspaceId) return NextResponse.json({ ok: false }, { status: 401 });
   await ensureAdditiveSchema();
+  if (!(await isOrgWritable(workspaceId))) return NextResponse.json({ ok: true, status: "readonly" });
 
   // Onboarding passes the project it just created; that run skips the
   // workspace claim so a login sync already in flight can't delay it.

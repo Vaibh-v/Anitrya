@@ -13,6 +13,8 @@ import { GbpLocationMappingPanel } from "@/components/settings/GbpLocationMappin
 import { GoogleAdsAccountMappingPanel } from "@/components/settings/GoogleAdsAccountMappingPanel";
 import { ProjectDirectory } from "@/components/settings/ProjectDirectory";
 import { StoragePanel } from "@/components/settings/StoragePanel";
+import { TeamPanel } from "@/components/settings/TeamPanel";
+import { can, getAccess } from "@/lib/org/access";
 import { resolveFounderWorkspaceId } from "@/lib/intelligence/owner-network/owner-auth";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -69,12 +71,25 @@ export default async function SettingsPage({
   const preset = readString(resolved.preset) || "30d";
   const { from, to } = resolveDateRange(preset);
 
-  const selectedProject = await resolveSelectedProject({
-    workspaceId,
-    projectSlug: activeProjectSlug,
-  });
+  const access = await getAccess();
+  const scopedSlug =
+    access?.projectScope && !(activeProjectSlug && access.projectScope.includes(activeProjectSlug))
+      ? access.projectScope[0] ?? null
+      : activeProjectSlug;
+  const selectedProject =
+    access?.projectScope && access.projectScope.length === 0
+      ? null
+      : await resolveSelectedProject({
+          workspaceId,
+          projectSlug: scopedSlug,
+        });
 
-  const projects = workspaceId ? await listWorkspaceProjects(workspaceId) : [];
+  const allProjects = workspaceId ? await listWorkspaceProjects(workspaceId) : [];
+  // Members limited to certain projects only see and select those.
+  const projects = access?.projectScope ? allProjects.filter((p) => access.projectScope!.includes(p.slug)) : allProjects;
+  const canSources = can(access, "manage_sources");
+  const canSync = can(access, "sync");
+  const canExport = can(access, "export");
   const syncHealthRuns =
     workspaceId && selectedProject
       ? await listSyncHealthRuns({
@@ -129,14 +144,16 @@ export default async function SettingsPage({
         <a href="#sync"><span>03</span>Sync</a>
         <a href="#export"><span>04</span>Export</a>
         <a href="#health"><span>05</span>Health</a>
+        <a href="#team"><span>06</span>Team</a>
       </nav>
 
       <section id="projects" className="eye-step">
-        <ProjectDirectory projects={projects} selectedSlug={selectedProject?.slug ?? null} preset={preset} />
+        <ProjectDirectory projects={projects} selectedSlug={selectedProject?.slug ?? null} preset={preset} canCreate={can(access, "manage_projects")} />
       </section>
 
       {selectedProject ? (
         <div className="eye-legacy">
+          {canSources ? (
           <section id="sources" className="eye-step">
             <StepHead index="02" title="Sources" text={`Choose which Google properties feed ${selectedProject.name}.`} />
             <ProjectMappingPanel
@@ -157,19 +174,23 @@ export default async function SettingsPage({
               projectLabel={selectedProject.name}
             />
           </section>
+          ) : null}
 
           <section id="sync" className="eye-step">
             <StepHead index="03" title="Sync" text="Pull fresh evidence for the selected range, then review the run history." />
-            <EntitySyncPanel
-              key={`${selectedProject.slug}-sync`}
-              projectSlug={selectedProject.slug}
-              projectLabel={selectedProject.name}
-              initialFrom={from}
-              initialTo={to}
-            />
+            {canSync ? (
+              <EntitySyncPanel
+                key={`${selectedProject.slug}-sync`}
+                projectSlug={selectedProject.slug}
+                projectLabel={selectedProject.name}
+                initialFrom={from}
+                initialTo={to}
+              />
+            ) : null}
             <SyncHealthHistoryPanel runs={syncHealthRuns} />
           </section>
 
+          {canExport ? (
           <section id="export" className="eye-step">
             <StepHead index="04" title="Export" text="Write this project's evidence and intelligence into a Google Sheet." />
             <CustomerSheetExportButton
@@ -179,6 +200,7 @@ export default async function SettingsPage({
               to={to}
             />
           </section>
+          ) : null}
 
           <section id="health" className="eye-step">
             <StepHead index="05" title="Health" text="Connection, mapping and sync readiness for every provider." />
@@ -186,7 +208,14 @@ export default async function SettingsPage({
             {integrationHealth ? <IntegrationReadinessPanel health={integrationHealth} /> : null}
           </section>
         </div>
-      ) : (
+      ) : null}
+
+      <section id="team" className="eye-step">
+        <StepHead index="06" title="Team" text="Who can see and change this organization, and what each role may do." />
+        <TeamPanel projects={allProjects.map((p) => ({ slug: p.slug, name: p.name }))} />
+      </section>
+
+      {selectedProject ? null : (
         <section className="eye-alert">
           <strong>No project yet</strong>
           <span>Create a project above, or set one up from the properties available in your Google account.</span>

@@ -19,6 +19,7 @@ export function ProjectDirectory(props: {
   projects: DirectoryProject[];
   selectedSlug: string | null;
   preset: string;
+  canCreate?: boolean;
 }) {
   const router = useRouter();
   const [ga4, setGa4] = useState<Option[]>([]);
@@ -105,12 +106,14 @@ export function ProjectDirectory(props: {
           <h2 className="eye-directory-title">{props.projects.length} project{props.projects.length === 1 ? "" : "s"} in this workspace</h2>
           <p className="eye-panel-text">Each project should map to its own GA4 property and Search Console site.</p>
         </div>
+        {props.canCreate === false ? null : (
         <div className="eye-actions-inline">
           <a className="eye-button eye-button-primary" href="/welcome?add=1">Add a website</a>
           <button type="button" className="eye-button" onClick={() => (formOpen ? setFormOpen(false) : openForm())}>
             {formOpen ? "Close" : "Create manually"}
           </button>
         </div>
+        )}
       </div>
 
       <div className="eye-project-grid">

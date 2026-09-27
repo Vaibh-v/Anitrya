@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
+import { scopedProjectRef } from "@/lib/org/access";
 import { cachedSeoDetail } from "@/lib/evidence/cached";
 import {
   EmptyState,
@@ -47,7 +48,7 @@ export default async function SeoPage(props: PageProps) {
 
   const params = (await props.searchParams) ?? {};
   const { from, to } = resolveRange(params);
-  const project = await getProjectMapping({ ref: params.project ?? null, workspaceId });
+  const project = await getProjectMapping({ ref: await scopedProjectRef(params.project), workspaceId });
   const seo = await cachedSeoDetail({ workspaceId, projectSlug: project.projectSlug, from, to });
   const settingsHref = `/home/settings?project=${encodeURIComponent(project.projectSlug)}`;
   const maxQueryClicks = Math.max(1, ...seo.topQueries.map((row) => row.primary));

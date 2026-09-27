@@ -1,3 +1,4 @@
+import { requirePermission } from "@/lib/org/access";
 import { NextRequest, NextResponse } from "next/server";
 import { handleProjectProviderSync } from "@/lib/integrations/handle-project-provider-sync";
 import { ensureAdditiveSchema } from "@/lib/db/ensure-additive-schema";
@@ -24,6 +25,8 @@ const PROVIDERS: Record<string, IntegrationSyncProvider> = {
  * routes it writes project-scoped normalized evidence and returns { ok, result }.
  */
 export async function POST(request: NextRequest) {
+  const guard = await requirePermission("sync");
+  if (guard instanceof NextResponse) return guard;
   await ensureAdditiveSchema();
   const source = request.nextUrl.searchParams.get("source") ?? "";
   const provider = PROVIDERS[source];

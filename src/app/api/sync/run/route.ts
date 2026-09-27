@@ -1,3 +1,4 @@
+import { canSeeProject, requirePermission } from "@/lib/org/access";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
@@ -82,6 +83,8 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await requirePermission("sync");
+  if (guard instanceof NextResponse) return guard;
   const results: SyncResult[] = [];
 
   try {
@@ -123,6 +126,10 @@ export async function POST(req: NextRequest) {
       workspaceId,
       ref: projectRef,
     });
+
+    if (!canSeeProject(guard, mapping.projectSlug)) {
+      return NextResponse.json({ ok: false, error: "You don't have access to this project." }, { status: 403 });
+    }
 
     results.push(
       ...(await runProjectIntegrationSyncs({

@@ -4,6 +4,7 @@ import { getProjectMapping } from "@/lib/project/project-mapper";
 import type { IntegrationSyncProvider } from "@/lib/integrations/sync-contracts";
 import { parseProjectSyncRequest } from "@/lib/integrations/project-sync-request";
 import { runProjectIntegrationSyncs } from "@/lib/integrations/run-project-integration-syncs";
+import { canSeeProject, getAccess } from "@/lib/org/access";
 
 export async function handleProjectProviderSync(
   request: NextRequest,
@@ -33,6 +34,10 @@ export async function handleProjectProviderSync(
       workspaceId,
       ref: input.project,
     });
+
+    if (!canSeeProject(await getAccess(), mapping.projectSlug)) {
+      return NextResponse.json({ ok: false, error: "You don't have access to this project." }, { status: 403 });
+    }
 
     const [result] = await runProjectIntegrationSyncs(
       { workspaceId, mapping, from: input.from, to: input.to },

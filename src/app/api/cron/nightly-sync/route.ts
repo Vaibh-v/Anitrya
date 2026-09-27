@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ensureAdditiveSchema } from "@/lib/db/ensure-additive-schema";
 import { projectsNeedingSync, runAutoSync } from "@/lib/sync/auto-sync";
+import { isOrgWritable } from "@/lib/org/access";
 
 export const maxDuration = 300;
 
@@ -20,6 +21,7 @@ export async function GET(request: Request) {
   let synced = 0;
   for (const workspace of workspaces) {
     if (Date.now() - started > 240_000) break;
+    if (!(await isOrgWritable(workspace.id))) continue;
     const slugs = await projectsNeedingSync(workspace.id);
     if (slugs.length === 0) continue;
     await runAutoSync(workspace.id, slugs).catch((error) => console.error("NIGHTLY_SYNC_FAILED", workspace.id, error));

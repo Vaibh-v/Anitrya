@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
+import { scopedProjectRef } from "@/lib/org/access";
 import { cachedIntelligence, cachedOverviewSummary } from "@/lib/evidence/cached";
 import type { IntelligenceRunOutput } from "@/lib/intelligence/contracts";
 import { EmptyState, KpiGrid, PageHeading, formatNumber, resolveRange } from "@/components/dashboard/PageParts";
@@ -27,7 +28,7 @@ export default async function IntelligencePage(props: PageProps) {
 
   const params = (await props.searchParams) ?? {};
   const { from, to } = resolveRange(params);
-  const project = await getProjectMapping({ ref: params.project ?? null, workspaceId });
+  const project = await getProjectMapping({ ref: await scopedProjectRef(params.project), workspaceId });
   const summary = await cachedOverviewSummary({ workspaceId, projectId: project.projectSlug, from, to });
 
   // Rule-based and read-only: computed live from stored evidence, never persisted from this page.

@@ -384,3 +384,4 @@ a.eye-button { display: inline-flex; align-items: center; text-decoration: none;
 .eye-ai-models { font-size: 11px !important; }
 .eye-ai-ask { display: flex; gap: 8px; margin-top: 4px; }
 .eye-ai-ask input { flex: 1; min-width: 0; border: 1px solid var(--eye-border); border-radius: 10px; background: rgba(255,255,255,.04); padding: 8px 10px; color: #e8eef7; font-size: 12px; }
+.eye-pill-warn { border-color: rgba(245,196,107,.5) !important; color: #f5c46b !important; }

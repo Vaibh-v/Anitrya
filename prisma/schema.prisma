@@ -477,6 +477,8 @@ enum Role {
   EDITOR
   ANALYST
   VIEWER
+  OWNER
+  CLIENT_VIEWER
 }
 
 enum IntegrationProvider {
