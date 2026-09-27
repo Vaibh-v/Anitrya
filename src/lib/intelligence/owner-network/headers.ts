@@ -12,6 +12,17 @@ export const MASTER_HEADERS: Record<string, string[]> = {
     "created_at",
     "updated_at",
   ],
+  [MASTER_TABS.sheetArchive]: [
+    "workspace_id",
+    "workspace_name",
+    "sheet_id",
+    "sheet_url",
+    "role",
+    "active_from",
+    "active_to",
+    "cells_at_rotation",
+    "recorded_at",
+  ],
   [MASTER_TABS.projects]: [
     "workspace_id",
     "project_id",

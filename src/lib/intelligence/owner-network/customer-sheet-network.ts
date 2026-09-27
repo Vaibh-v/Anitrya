@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import {
+  CUSTOMER_SHEET_ROTATE_AT_CELLS,
   MASTER_TABS,
   OWNER_MASTER_SPREADSHEET_ID,
 } from "@/lib/intelligence/owner-network/constants";
 import { MASTER_HEADERS } from "@/lib/intelligence/owner-network/headers";
 import {
+  appendRows,
+  countSpreadsheetCells,
+  createSpreadsheet,
   ensureSheetStructure,
   readSheetValues,
   upsertRowByKey,
@@ -23,6 +27,38 @@ type OwnerCustomerSheetRef = {
   workspaceSlug: string;
   ownerEmail: string;
 };
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function recordSheet(input: {
+  workspaceId: string;
+  workspaceName: string;
+  sheetId: string;
+  sheetUrl: string;
+  role: "active" | "archive";
+  activeFrom: string;
+  activeTo: string;
+  cells: string;
+}) {
+  await ensureSheetStructure(OWNER_MASTER_SPREADSHEET_ID, {
+    [MASTER_TABS.sheetArchive]: MASTER_HEADERS[MASTER_TABS.sheetArchive],
+  });
+  await appendRows(OWNER_MASTER_SPREADSHEET_ID, MASTER_TABS.sheetArchive, [
+    [
+      input.workspaceId,
+      input.workspaceName,
+      input.sheetId,
+      input.sheetUrl,
+      input.role,
+      input.activeFrom,
+      input.activeTo,
+      input.cells,
+      new Date().toISOString(),
+    ],
+  ]);
+}
 
 function safe(value: string | null | undefined) {
   return value?.trim() ?? "";
@@ -90,14 +126,32 @@ export async function ensureOwnerCustomerSheet(
     const assignedIndex = customerRows.length - 1;
     const assignedSheet = getOwnerCustomerSheetByIndex(assignedIndex);
 
-    if (!assignedSheet) {
-      throw new Error(
-        `No preassigned owner customer sheet is available for workspace ${workspaceId}. Add another sheet to OWNER_CUSTOMER_SHEET_REGISTRY.`,
-      );
+    if (assignedSheet) {
+      customerSheetId = assignedSheet.spreadsheetId;
+      customerSheetUrl = assignedSheet.spreadsheetUrl;
+    } else {
+      // Past the pre-made sheets: create one for this customer automatically.
+      const created = await createSpreadsheet(`Anitrya · ${workspaceName || workspaceSlug || workspaceId}`);
+      customerSheetId = created.spreadsheetId;
+      customerSheetUrl = created.spreadsheetUrl;
     }
+    await recordSheet({ workspaceId, workspaceName, sheetId: customerSheetId, sheetUrl: customerSheetUrl, role: "active", activeFrom: today(), activeTo: "", cells: "" });
+  }
 
-    customerSheetId = assignedSheet.spreadsheetId;
-    customerSheetUrl = assignedSheet.spreadsheetUrl;
+  // Archive rotation: never delete or roll up history. When the active sheet
+  // nears Google's 10M-cell limit it becomes an archive and a fresh sheet
+  // takes over; the master records every sheet and its dates.
+  try {
+    const cells = await countSpreadsheetCells(customerSheetId);
+    if (cells >= CUSTOMER_SHEET_ROTATE_AT_CELLS) {
+      const created = await createSpreadsheet(`Anitrya · ${workspaceName || workspaceSlug || workspaceId} · from ${today()}`);
+      await recordSheet({ workspaceId, workspaceName, sheetId: customerSheetId, sheetUrl: customerSheetUrl, role: "archive", activeFrom: "", activeTo: today(), cells: String(cells) });
+      customerSheetId = created.spreadsheetId;
+      customerSheetUrl = created.spreadsheetUrl;
+      await recordSheet({ workspaceId, workspaceName, sheetId: customerSheetId, sheetUrl: customerSheetUrl, role: "active", activeFrom: today(), activeTo: "", cells: "" });
+    }
+  } catch (error) {
+    console.error("CUSTOMER_SHEET_ROTATION_CHECK_FAILED", error instanceof Error ? error.message : error);
   }
 
   const now = new Date().toISOString();

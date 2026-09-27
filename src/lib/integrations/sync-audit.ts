@@ -3,12 +3,17 @@ import type {
   IntegrationSyncResult,
 } from "@/lib/integrations/sync-contracts";
 import { recordManualSyncRun } from "@/lib/sync/sync-run-recorder";
+import { invalidateEvidence } from "@/lib/evidence/cached";
 
 export async function recordIntegrationSyncResult(input: {
   context: IntegrationSyncContext;
   result: IntegrationSyncResult;
 }): Promise<void> {
   const { context, result } = input;
+
+  if (result.status === "success" && result.rowsSynced > 0) {
+    invalidateEvidence(context.workspaceId, context.mapping.projectSlug);
+  }
 
   await recordManualSyncRun({
     workspaceId: context.workspaceId,

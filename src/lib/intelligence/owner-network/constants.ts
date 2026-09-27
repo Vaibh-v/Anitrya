@@ -6,7 +6,11 @@ export const MASTER_TABS = {
   customers: "customers",
   projects: "projects",
   syncHealth: "sync_health",
+  sheetArchive: "sheet_archive",
 } as const;
+
+/** Start a new customer sheet once the active one passes this many cells (limit 10M). */
+export const CUSTOMER_SHEET_ROTATE_AT_CELLS = 8_000_000;
 
 export const CUSTOMER_TABS = {
   projects: "projects",

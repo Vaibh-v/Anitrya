@@ -7,6 +7,7 @@ import { exportNormalizedProjectDataToOwnerSheet } from "@/lib/intelligence/owne
 import { runIntelligence } from "@/lib/intelligence/run-intelligence";
 import { exportIntelligenceToSheets } from "@/lib/intelligence/owner-network/export-intelligence-to-sheets";
 import { recordSyncHealthRun } from "@/lib/sync/sync-health-history";
+import { ownerSheetsAuthMode } from "@/lib/intelligence/owner-network/owner-auth";
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -59,15 +60,17 @@ type IntelligenceResultSummary =
       error: string;
     };
 
-function getOwnerSheetServiceAccountConfigStatus() {
+async function getOwnerSheetServiceAccountConfigStatus() {
+  // Configured when either the service account or the founder's Google sign-in can write.
+  const mode = await ownerSheetsAuthMode();
   const required = [
     "GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL",
     "GOOGLE_SHEETS_PRIVATE_KEY",
   ] as const;
-  const missingEnv = required.filter((name) => !process.env[name]?.trim());
+  const missingEnv = mode ? [] : required.filter((name) => !process.env[name]?.trim());
 
   return {
-    configured: missingEnv.length === 0,
+    configured: mode !== null,
     missingEnv,
   };
 }
@@ -130,7 +133,7 @@ export async function POST(req: NextRequest) {
       })),
     );
 
-    const ownerSheetConfig = getOwnerSheetServiceAccountConfigStatus();
+    const ownerSheetConfig = await getOwnerSheetServiceAccountConfigStatus();
 
     let ownerSheet: OwnerSheetResult = {
       status: "skipped",

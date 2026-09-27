@@ -13,35 +13,7 @@ export type DirectoryProject = {
   gscLabel: string | null;
 };
 
-type Option = { id: string; label: string };
-
-function words(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/\(\d+\)/g, " ")
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 4 && !["https", "http", "domain", "www"].includes(word));
-}
-
-function siteHost(label: string) {
-  return label.replace(/^sc-domain:/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "");
-}
-
-/** Best-effort pairing of a GA4 property with a Search Console site by shared name words. */
-function suggestSite(ga4: Option, sites: Option[]): Option | null {
-  const tokens = words(ga4.label);
-  let best: { site: Option; score: number } | null = null;
-  for (const site of sites) {
-    const host = siteHost(site.label).toLowerCase();
-    const score = tokens.filter((token) => host.includes(token)).length;
-    if (score > 0 && (!best || score > best.score)) best = { site, score };
-  }
-  return best?.site ?? null;
-}
-
-function propertyName(label: string) {
-  return label.replace(/\s*\(\d+\)\s*$/, "").replace(/\s*-\s*GA4$/i, "").trim() || label;
-}
+import { propertyName, suggestSite, type Option } from "@/lib/projects/pair-properties";
 
 export function ProjectDirectory(props: {
   projects: DirectoryProject[];
@@ -133,9 +105,12 @@ export function ProjectDirectory(props: {
           <h2 className="eye-directory-title">{props.projects.length} project{props.projects.length === 1 ? "" : "s"} in this workspace</h2>
           <p className="eye-panel-text">Each project should map to its own GA4 property and Search Console site.</p>
         </div>
-        <button type="button" className="eye-button eye-button-primary" onClick={() => (formOpen ? setFormOpen(false) : openForm())}>
-          {formOpen ? "Close" : "Create project"}
-        </button>
+        <div className="eye-actions-inline">
+          <a className="eye-button eye-button-primary" href="/welcome?add=1">Add a website</a>
+          <button type="button" className="eye-button" onClick={() => (formOpen ? setFormOpen(false) : openForm())}>
+            {formOpen ? "Close" : "Create manually"}
+          </button>
+        </div>
       </div>
 
       <div className="eye-project-grid">

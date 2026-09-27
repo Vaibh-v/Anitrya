@@ -23,13 +23,13 @@ export default async function LandingPage() {
       </header>
       <div className="eye-landing-content">
         <section className="eye-landing-copy">
-          <span className="eye-overline">Anitrya / God&apos;s Eye</span>
-          <h1>A clearer view of what matters next.</h1>
-          <p>Bring your analytics evidence together, see the gaps, and turn connected signals into accountable decisions.</p>
+          <span className="eye-overline">Anitrya · Instant Insight</span>
+          <h1>Sign in. Know what to fix — in under a minute.</h1>
+          <p>Anitrya reads your Google Analytics and Search Console, compares this period with the last, and ranks what matters most with the exact next step. No setup, no sync button.</p>
           <div className="eye-landing-actions">
             {isSignedIn ? <Link className="eye-primary" href="/home">Open workspace →</Link> : <SignInButton />}
-            <a href="#preview" className="eye-secondary">Explore the interface ↓</a>
-          </div>
+            <Link href="/help" className="eye-secondary">How it works</Link>
+                      </div>
           <div className="eye-landing-sources" aria-label="Evidence sources">
             <span>GA4</span><span>Search Console</span><span>Google Ads</span><span>Business Profile</span>
           </div>

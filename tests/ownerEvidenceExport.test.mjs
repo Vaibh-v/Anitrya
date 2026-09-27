@@ -43,7 +43,7 @@ test("covers every normalized source tab with project-scoped columns", () => {
     EVIDENCE_TABLE_SPECS.map((spec) => spec.tab),
     ["ga4_source_daily", "ga4_landing_page_daily", "gsc_query_daily", "gsc_page_daily", "google_ads_campaign_daily", "gbp_location_daily"],
   );
-  assert.equal(resolveMaxRowsPerTab(undefined), 10000);
+  assert.equal(resolveMaxRowsPerTab(undefined), 50000);
   assert.equal(resolveMaxRowsPerTab("999999"), 50000);
 });
 
@@ -55,4 +55,16 @@ test("Google responses that are not JSON produce explainable errors", async () =
   assert.deepEqual(await readGoogleJson(Response.json({ ok: 1 }), "x"), { ok: 1 });
   assert.throws(() => assertIsoDateRange("2026-09-01' OR 1=1", "2026-09-02", "Ads"), /valid YYYY-MM-DD/);
   assert.throws(() => assertIsoDateRange("2026-09-05", "2026-09-02", "Ads"), /from <= to/);
+});
+
+test("with a window, a project's older rows are kept so history accumulates", () => {
+  const header = ["workspace_id", "project_id", "project_slug", "project_label", "date", "metric", "value", "synced_at"];
+  const existing = [
+    header,
+    ["ws", "p1", "acme", "Acme", "2026-06-01", "OLD", "1", "x"],
+    ["ws", "p1", "acme", "Acme", "2026-09-02", "STALE", "1", "x"],
+  ];
+  const next = [["ws", "p1", "acme", "Acme", "2026-09-02", "NEW", "2", "y"]];
+  const merged = mergeProjectRows({ existing, header, workspaceId: "ws", projectSlug: "acme", nextRows: next, from: "2026-09-01", to: "2026-09-30" });
+  assert.deepEqual(merged.map((r) => r[5]), ["metric", "OLD", "NEW"]);
 });

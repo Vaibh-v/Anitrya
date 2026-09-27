@@ -13,6 +13,7 @@ import type { IntegrationSyncProvider } from "@/lib/integrations/sync-contracts"
 import { exportNormalizedProjectDataToOwnerSheet } from "@/lib/intelligence/owner-network/export-normalized-project-data";
 import { exportIntelligenceToSheets } from "@/lib/intelligence/owner-network/export-intelligence-to-sheets";
 import { runIntelligence } from "@/lib/intelligence/run-intelligence";
+import { ownerSheetsAuthMode } from "@/lib/intelligence/owner-network/owner-auth";
 
 export const AUTO_SYNC_STAGES = [7, 28, 90] as const;
 const FRESH_HOURS = 6;
@@ -65,8 +66,8 @@ export async function projectsNeedingSync(workspaceId: string): Promise<string[]
   return projects.map((p) => p.slug).filter((slug) => !fresh.has(slug));
 }
 
-function ownerSheetConfigured() {
-  return Boolean(process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL?.trim() && process.env.GOOGLE_SHEETS_PRIVATE_KEY?.trim());
+async function ownerSheetConfigured() {
+  return (await ownerSheetsAuthMode()) !== null;
 }
 
 export async function runAutoSync(workspaceId: string, slugs: string[]) {
@@ -90,7 +91,7 @@ export async function runAutoSync(workspaceId: string, slugs: string[]) {
   }
 
   // Invisible exports: nothing here is surfaced to the customer.
-  if (!ownerSheetConfigured()) return;
+  if (!(await ownerSheetConfigured())) return;
   const { from, to } = stageWindow(28);
   await pool(
     mappings.map((mapping) => async () => {

@@ -5,6 +5,7 @@
  * selected one and ends the day before it starts.
  */
 import { prisma } from "@/lib/prisma";
+import { dateRange } from "@/lib/evidence/date-predicate";
 
 import { buildWindow, type Window } from "@/lib/intelligence/v2/window";
 
@@ -26,7 +27,9 @@ export type EvidenceAggregates = {
   coverage: { ga4CurDays: number; ga4PrevDays: number; gscCurDays: number; gscPrevDays: number };
 };
 
-const SCOPE = `workspace_id = $1 AND project_slug = $2 AND CAST(date AS TEXT) >= $5 AND CAST(date AS TEXT) <= $4`;
+async function scope(table: string) {
+  return `workspace_id = $1 AND project_slug = $2 AND ${await dateRange(table, 5, 4)}`;
+}
 const CUR = `CAST(date AS TEXT) >= $3`;
 
 function n(value: unknown): number {
@@ -61,7 +64,7 @@ export async function loadEvidenceAggregates(input: {
               SUM(CASE WHEN ${CUR} THEN COALESCE(engaged_sessions,0) ELSE 0 END) AS cur_engaged,
               SUM(CASE WHEN ${CUR} THEN COALESCE(conversions,0) ELSE 0 END) AS cur_conv,
               SUM(CASE WHEN ${CUR} THEN 0 ELSE COALESCE(conversions,0) END) AS prev_conv
-       FROM ga4_source_daily WHERE ${SCOPE} GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 200`,
+       FROM ga4_source_daily WHERE ${await scope("ga4_source_daily")} GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 200`,
       params,
     ),
     q(
@@ -70,30 +73,30 @@ export async function loadEvidenceAggregates(input: {
               SUM(CASE WHEN ${CUR} THEN 0 ELSE sessions END) AS prev,
               SUM(CASE WHEN ${CUR} THEN COALESCE(engaged_sessions,0) ELSE 0 END) AS cur_engaged,
               SUM(CASE WHEN ${CUR} THEN COALESCE(conversions,0) ELSE 0 END) AS cur_conv
-       FROM ga4_landing_page_daily WHERE ${SCOPE} AND landing_page IS NOT NULL
+       FROM ga4_landing_page_daily WHERE ${await scope("ga4_landing_page_daily")} AND landing_page IS NOT NULL
        GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 500`,
       params,
     ),
-    q(searchSql("gsc_query_daily", "query", 3000), params),
-    q(searchSql("gsc_page_daily", "page", 1500), params),
+    q(searchSql("gsc_query_daily", "query", 3000, await scope("gsc_query_daily")), params),
+    q(searchSql("gsc_page_daily", "page", 1500, await scope("gsc_page_daily")), params),
     q(
       `SELECT CAST(date AS TEXT) AS d, SUM(sessions) AS v FROM ga4_source_daily
-       WHERE workspace_id = $1 AND project_slug = $2 AND CAST(date AS TEXT) >= $3 AND CAST(date AS TEXT) <= $4 AND $5::text IS NOT NULL
+       WHERE workspace_id = $1 AND project_slug = $2 AND ${await dateRange("ga4_source_daily", 3, 4)} AND $5::text IS NOT NULL
        GROUP BY 1 ORDER BY 1`,
       params,
     ),
     q(
       `SELECT CAST(date AS TEXT) AS d, SUM(clicks) AS v FROM gsc_page_daily
-       WHERE workspace_id = $1 AND project_slug = $2 AND CAST(date AS TEXT) >= $3 AND CAST(date AS TEXT) <= $4 AND $5::text IS NOT NULL
+       WHERE workspace_id = $1 AND project_slug = $2 AND ${await dateRange("gsc_page_daily", 3, 4)} AND $5::text IS NOT NULL
        GROUP BY 1 ORDER BY 1`,
       params,
     ),
     q(
       `SELECT
-         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM ga4_source_daily WHERE ${SCOPE} AND ${CUR}) AS ga4_cur,
-         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM ga4_source_daily WHERE ${SCOPE} AND NOT (${CUR})) AS ga4_prev,
-         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM gsc_page_daily WHERE ${SCOPE} AND ${CUR}) AS gsc_cur,
-         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM gsc_page_daily WHERE ${SCOPE} AND NOT (${CUR})) AS gsc_prev`,
+         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM ga4_source_daily WHERE ${await scope("ga4_source_daily")} AND ${CUR}) AS ga4_cur,
+         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM ga4_source_daily WHERE ${await scope("ga4_source_daily")} AND NOT (${CUR})) AS ga4_prev,
+         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM gsc_page_daily WHERE ${await scope("gsc_page_daily")} AND ${CUR}) AS gsc_cur,
+         (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM gsc_page_daily WHERE ${await scope("gsc_page_daily")} AND NOT (${CUR})) AS gsc_prev`,
       params,
     ),
   ]);
@@ -129,7 +132,7 @@ export async function loadEvidenceAggregates(input: {
   };
 }
 
-function searchSql(table: string, column: string, limit: number) {
+function searchSql(table: string, column: string, limit: number, where: string) {
   return `SELECT ${column} AS label,
             SUM(CASE WHEN ${CUR} THEN clicks ELSE 0 END) AS cur_clicks,
             SUM(CASE WHEN ${CUR} THEN impressions ELSE 0 END) AS cur_impr,
@@ -137,7 +140,7 @@ function searchSql(table: string, column: string, limit: number) {
             SUM(CASE WHEN ${CUR} THEN 0 ELSE clicks END) AS prev_clicks,
             SUM(CASE WHEN ${CUR} THEN 0 ELSE impressions END) AS prev_impr,
             SUM(CASE WHEN ${CUR} THEN 0 ELSE position * impressions END) AS prev_pos_w
-          FROM ${table} WHERE ${SCOPE} AND ${column} IS NOT NULL AND ${column} <> ''
+          FROM ${table} WHERE ${where} AND ${column} IS NOT NULL AND ${column} <> ''
           GROUP BY 1
           ORDER BY SUM(CASE WHEN ${CUR} THEN impressions ELSE 0 END) + SUM(CASE WHEN ${CUR} THEN 0 ELSE impressions END) DESC NULLS LAST
           LIMIT ${limit}`;

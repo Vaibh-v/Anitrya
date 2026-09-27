@@ -155,6 +155,7 @@ export function HomeNavigation() {
             <span className="eye-sync-dot" aria-hidden="true" />Updating
           </span>
         ) : null}
+        <a className="eye-pill" href="/help">Help</a>
         <span className="eye-pill eye-workspace-pill">Workspace</span>
       </header>
       <nav className="eye-nav" aria-label="Primary navigation">

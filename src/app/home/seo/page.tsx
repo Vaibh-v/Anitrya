@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
-import { getSeoDetail } from "@/lib/evidence/page-insights";
+import { cachedSeoDetail } from "@/lib/evidence/cached";
 import {
   EmptyState,
   KpiGrid,
@@ -12,6 +12,7 @@ import {
   formatPercent,
   resolveRange,
 } from "@/components/dashboard/PageParts";
+import { PageTip } from "@/components/dashboard/PageTip";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -47,7 +48,7 @@ export default async function SeoPage(props: PageProps) {
   const params = (await props.searchParams) ?? {};
   const { from, to } = resolveRange(params);
   const project = await getProjectMapping({ ref: params.project ?? null, workspaceId });
-  const seo = await getSeoDetail({ workspaceId, projectSlug: project.projectSlug, from, to });
+  const seo = await cachedSeoDetail({ workspaceId, projectSlug: project.projectSlug, from, to });
   const settingsHref = `/home/settings?project=${encodeURIComponent(project.projectSlug)}`;
   const maxQueryClicks = Math.max(1, ...seo.topQueries.map((row) => row.primary));
   const shortPath = pageLabeler(seo.topPages.map((row) => row.label));
@@ -64,6 +65,8 @@ export default async function SeoPage(props: PageProps) {
           from={from}
           to={to}
         />
+
+        <PageTip id="seo" title="Search demand at a glance" text="Queries show what people typed; pages show where they landed. Sort your effort by impressions: high impressions with low CTR are the quickest wins." href="/help#tabs" />
 
         {!project.gscSiteUrl ? (
           <EmptyState title="No Search Console site mapped" body="Map a Search Console site to this project to collect query and page evidence." href={settingsHref} action="Map sources" />

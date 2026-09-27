@@ -66,7 +66,7 @@ export const EVIDENCE_TABLE_SPECS: EvidenceTableSpec[] = [
   },
 ];
 
-export const DEFAULT_MAX_ROWS_PER_TAB = 10_000;
+export const DEFAULT_MAX_ROWS_PER_TAB = 50_000;
 export const MAX_ROWS_PER_TAB_ENV = "OWNER_EXPORT_MAX_ROWS_PER_TAB";
 
 export function resolveMaxRowsPerTab(raw: string | undefined): number {
@@ -111,23 +111,36 @@ export function mergeProjectRows(input: {
   workspaceId: string;
   projectSlug: string;
   nextRows: string[][];
+  /**
+   * The window being rewritten. When given, this project's rows dated outside
+   * it are kept, so the sheet accumulates history across syncs instead of
+   * holding only the latest export. Without it, all of the project's rows are
+   * replaced (the previous behaviour).
+   */
+  from?: string;
+  to?: string;
 }): string[][] {
   const existingHeader = input.existing[0] ?? [];
   const sameHeader =
     existingHeader.length === input.header.length &&
     existingHeader.every((cell, index) => cell === input.header[index]);
+  const workspaceIndex = input.header.indexOf("workspace_id");
+  const projectIndex = input.header.indexOf("project_slug");
+  const dateIndex = input.header.indexOf("date");
+  const keepHistory = Boolean(input.from && input.to && dateIndex >= 0);
 
-  // If the tab's header changed shape, rows from other projects cannot be
-  // realigned safely — start the tab over with the canonical header.
+  // If the tab's header changed shape, rows cannot be realigned safely —
+  // start the tab over with the canonical header.
   const retained = sameHeader
     ? input.existing.slice(1).filter((row) => {
-        const workspaceIndex = input.header.indexOf("workspace_id");
-        const projectIndex = input.header.indexOf("project_slug");
         if (workspaceIndex < 0 || projectIndex < 0) return false;
-        return !(
+        const sameProject =
           (row[workspaceIndex] ?? "") === input.workspaceId &&
-          (row[projectIndex] ?? "") === input.projectSlug
-        );
+          (row[projectIndex] ?? "") === input.projectSlug;
+        if (!sameProject) return true;
+        if (!keepHistory) return false;
+        const date = row[dateIndex] ?? "";
+        return date !== "" && (date < input.from! || date > input.to!);
       })
     : [];
 

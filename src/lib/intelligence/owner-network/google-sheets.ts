@@ -1,4 +1,5 @@
 import { google, sheets_v4 } from "googleapis";
+import { founderSheetsAuth, serviceAccountConfigured } from "@/lib/intelligence/owner-network/owner-auth";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -26,6 +27,10 @@ function getSheetsJwt() {
 }
 
 async function getSheetsClient(): Promise<sheets_v4.Sheets> {
+  // Prefer the service account; otherwise write as the founder's Google sign-in.
+  if (!serviceAccountConfigured()) {
+    return google.sheets({ version: "v4", auth: await founderSheetsAuth() });
+  }
   const auth = getSheetsJwt();
   await auth.authorize();
 
@@ -260,14 +265,42 @@ export async function clearAndWriteManySheets(
     requestBody: { ranges: tabs.map((tab) => `${tab.tabName}!A:ZZ`) },
   });
 
-  const data = tabs
-    .filter((tab) => tab.rows.length > 0)
-    .map((tab) => ({ range: `${tab.tabName}!A1`, values: tab.rows }));
-
-  if (data.length === 0) return;
-
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    requestBody: { valueInputOption, data },
+  // Large tabs are written in 5,000-row blocks, 4 blocks per request, so a
+  // tab holding months of history never exceeds the API's request size.
+  const BLOCK = 5_000;
+  const data = tabs.flatMap((tab) => {
+    const blocks: Array<{ range: string; values: string[][] }> = [];
+    for (let start = 0; start < tab.rows.length; start += BLOCK) {
+      blocks.push({ range: `${tab.tabName}!A${start + 1}`, values: tab.rows.slice(start, start + BLOCK) });
+    }
+    return blocks;
   });
+
+  for (let i = 0; i < data.length; i += 4) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: { valueInputOption, data: data.slice(i, i + 4) },
+    });
+  }
+}
+
+/** Cells allocated across all tabs; Google caps a spreadsheet at 10,000,000. */
+export async function countSpreadsheetCells(spreadsheetId: string): Promise<number> {
+  const spreadsheet = await getSpreadsheet(spreadsheetId);
+  return (spreadsheet.sheets ?? []).reduce((total, sheet) => {
+    const grid = sheet.properties?.gridProperties;
+    return total + (grid?.rowCount ?? 0) * (grid?.columnCount ?? 0);
+  }, 0);
+}
+
+/** Creates a new spreadsheet in the writer's Drive and returns its id and URL. */
+export async function createSpreadsheet(title: string): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
+  const sheets = await getSheetsClient();
+  const response = await sheets.spreadsheets.create({ requestBody: { properties: { title } } });
+  const spreadsheetId = response.data.spreadsheetId;
+  if (!spreadsheetId) throw new Error("Google did not return an id for the new spreadsheet.");
+  return {
+    spreadsheetId,
+    spreadsheetUrl: response.data.spreadsheetUrl ?? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
+  };
 }

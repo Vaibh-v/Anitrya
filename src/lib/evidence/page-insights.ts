@@ -5,12 +5,15 @@
  * empty result so a page never crashes on a missing table.
  */
 import { prisma } from "@/lib/prisma";
+import { dateRange } from "@/lib/evidence/date-predicate";
 
 type Scope = { workspaceId: string; projectSlug: string; from: string; to: string };
 
 export type RankedRow = { label: string; primary: number; secondary: number; tertiary?: number; quaternary?: number };
 
-const WHERE = `workspace_id = $1 AND project_slug = $2 AND CAST(date AS TEXT) >= $3 AND CAST(date AS TEXT) <= $4`;
+async function w(table: string) {
+  return `workspace_id = $1 AND project_slug = $2 AND ${await dateRange(table, 3, 4)}`;
+}
 
 function num(value: unknown): number {
   if (typeof value === "bigint") return Number(value);
@@ -43,21 +46,21 @@ export async function getSeoDetail(scope: Scope): Promise<SeoDetail> {
     safeQuery<Record<string, unknown>>(
       `SELECT COUNT(*)::bigint AS rows, COALESCE(SUM(clicks),0) AS clicks, COALESCE(SUM(impressions),0) AS impressions,
               COALESCE(SUM(position * impressions) / NULLIF(SUM(impressions),0), 0) AS position
-       FROM gsc_query_daily WHERE ${WHERE}`,
+       FROM gsc_query_daily WHERE ${await w("gsc_query_daily")}`,
       scope,
     ),
-    safeQuery<Record<string, unknown>>(`SELECT COUNT(*)::bigint AS rows FROM gsc_page_daily WHERE ${WHERE}`, scope),
+    safeQuery<Record<string, unknown>>(`SELECT COUNT(*)::bigint AS rows FROM gsc_page_daily WHERE ${await w("gsc_page_daily")}`, scope),
     safeQuery<Record<string, unknown>>(
       `SELECT query AS label, SUM(clicks) AS clicks, SUM(impressions) AS impressions,
               SUM(position * impressions) / NULLIF(SUM(impressions),0) AS position
-       FROM gsc_query_daily WHERE ${WHERE} AND query IS NOT NULL
+       FROM gsc_query_daily WHERE ${await w("gsc_query_daily")} AND query IS NOT NULL
        GROUP BY query ORDER BY SUM(clicks) DESC NULLS LAST, SUM(impressions) DESC NULLS LAST LIMIT 10`,
       scope,
     ),
     safeQuery<Record<string, unknown>>(
       `SELECT page AS label, SUM(clicks) AS clicks, SUM(impressions) AS impressions,
               SUM(position * impressions) / NULLIF(SUM(impressions),0) AS position
-       FROM gsc_page_daily WHERE ${WHERE} AND page IS NOT NULL
+       FROM gsc_page_daily WHERE ${await w("gsc_page_daily")} AND page IS NOT NULL
        GROUP BY page ORDER BY SUM(clicks) DESC NULLS LAST, SUM(impressions) DESC NULLS LAST LIMIT 10`,
       scope,
     ),
@@ -102,21 +105,21 @@ export async function getBehaviorDetail(scope: Scope): Promise<BehaviorDetail> {
     safeQuery<Record<string, unknown>>(
       `SELECT COUNT(*)::bigint AS rows, COALESCE(SUM(sessions),0) AS sessions, COALESCE(SUM(users),0) AS users,
               COALESCE(SUM(engaged_sessions),0) AS engaged, COALESCE(SUM(conversions),0) AS conversions
-       FROM ga4_source_daily WHERE ${WHERE}`,
+       FROM ga4_source_daily WHERE ${await w("ga4_source_daily")}`,
       scope,
     ),
-    safeQuery<Record<string, unknown>>(`SELECT COUNT(*)::bigint AS rows FROM ga4_landing_page_daily WHERE ${WHERE}`, scope),
+    safeQuery<Record<string, unknown>>(`SELECT COUNT(*)::bigint AS rows FROM ga4_landing_page_daily WHERE ${await w("ga4_landing_page_daily")}`, scope),
     safeQuery<Record<string, unknown>>(
       `SELECT COALESCE(source,'(direct)') || COALESCE(' / ' || NULLIF(medium,''), '') AS label,
               SUM(sessions) AS sessions, SUM(users) AS users, SUM(engaged_sessions) AS engaged, SUM(conversions) AS conversions
-       FROM ga4_source_daily WHERE ${WHERE}
+       FROM ga4_source_daily WHERE ${await w("ga4_source_daily")}
        GROUP BY 1 ORDER BY SUM(sessions) DESC NULLS LAST LIMIT 10`,
       scope,
     ),
     safeQuery<Record<string, unknown>>(
       `SELECT landing_page AS label, SUM(sessions) AS sessions, SUM(users) AS users,
               SUM(engaged_sessions) AS engaged, SUM(conversions) AS conversions
-       FROM ga4_landing_page_daily WHERE ${WHERE} AND landing_page IS NOT NULL
+       FROM ga4_landing_page_daily WHERE ${await w("ga4_landing_page_daily")} AND landing_page IS NOT NULL
        GROUP BY landing_page ORDER BY SUM(sessions) DESC NULLS LAST LIMIT 10`,
       scope,
     ),

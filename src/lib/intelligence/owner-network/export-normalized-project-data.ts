@@ -218,6 +218,8 @@ async function mirrorProjectEvidence(input: {
           workspaceId: input.workspaceId,
           projectSlug: input.projectSlug,
           nextRows,
+          from: input.from,
+          to: input.to,
         }),
       };
     });

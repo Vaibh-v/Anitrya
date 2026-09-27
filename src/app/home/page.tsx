@@ -2,10 +2,10 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { SignalGlobe } from "@/components/dashboard/SignalGlobe";
+import { PageTip } from "@/components/dashboard/PageTip";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
-import { getOverviewEvidenceSummary } from "@/lib/evidence/normalized-overview-store";
-import { getBehaviorDetail, getSeoDetail } from "@/lib/evidence/page-insights";
+import { cachedBehaviorDetail, cachedOverviewSummary, cachedSeoDetail } from "@/lib/evidence/cached";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -40,12 +40,12 @@ export default async function HomePage(props: PageProps) {
   }
 
   const summary = project
-    ? await getOverviewEvidenceSummary({ workspaceId, projectId: project.projectSlug, from, to })
+    ? await cachedOverviewSummary({ workspaceId, projectId: project.projectSlug, from, to })
     : { ga4SourceRows: 0, ga4LandingRows: 0, gscQueryRows: 0, gscPageRows: 0, googleAdsCampaignRows: 0, gbpLocationRows: 0, failureReason: null };
 
   const scope = project ? { workspaceId, projectSlug: project.projectSlug, from, to } : null;
   const [seo, behavior] = scope
-    ? await Promise.all([getSeoDetail(scope), getBehaviorDetail(scope)])
+    ? await Promise.all([cachedSeoDetail(scope), cachedBehaviorDetail(scope)])
     : [null, null];
   const performance = [
     { label: "Sessions", value: behavior?.sessions ?? 0, note: "GA4, all sources", color: "cyan" },
@@ -95,6 +95,8 @@ export default async function HomePage(props: PageProps) {
               <small>{from} → {to}</small>
             </div>
           </div>
+
+          <PageTip id="overview" title="Your data refreshes itself" text="Anitrya syncs in the background every time you open it. The headline numbers are for the selected date range; switch between 7, 30 and 90 days in the top bar." href="/help#sync" />
 
           {unavailable && (
             <div className="eye-alert" role="alert">

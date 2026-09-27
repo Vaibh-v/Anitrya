@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
-import { getBehaviorDetail } from "@/lib/evidence/page-insights";
+import { cachedBehaviorDetail } from "@/lib/evidence/cached";
 import {
   EmptyState,
   KpiGrid,
@@ -12,6 +12,7 @@ import {
   formatPercent,
   resolveRange,
 } from "@/components/dashboard/PageParts";
+import { PageTip } from "@/components/dashboard/PageTip";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -26,7 +27,7 @@ export default async function BehaviorPage(props: PageProps) {
   const params = (await props.searchParams) ?? {};
   const { from, to } = resolveRange(params);
   const project = await getProjectMapping({ ref: params.project ?? null, workspaceId });
-  const behavior = await getBehaviorDetail({ workspaceId, projectSlug: project.projectSlug, from, to });
+  const behavior = await cachedBehaviorDetail({ workspaceId, projectSlug: project.projectSlug, from, to });
   const settingsHref = `/home/settings?project=${encodeURIComponent(project.projectSlug)}`;
   const engagementRate = behavior.sessions > 0 ? behavior.engagedSessions / behavior.sessions : 0;
   const maxSource = Math.max(1, ...behavior.topSources.map((row) => row.primary));
@@ -49,6 +50,8 @@ export default async function BehaviorPage(props: PageProps) {
           from={from}
           to={to}
         />
+
+        <PageTip id="behavior" title="Where visitors come from and what they do" text="Compare sessions with engagement and key events per source and landing page. A page with many sessions but low engagement is worth fixing first." href="/help#tabs" />
 
         {!project.ga4PropertyId ? (
           <EmptyState title="No GA4 property mapped" body="Map a GA4 property to this project to collect traffic and landing-page evidence." href={settingsHref} action="Map sources" />

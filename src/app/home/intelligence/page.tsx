@@ -2,10 +2,10 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
-import { getOverviewEvidenceSummary } from "@/lib/evidence/normalized-overview-store";
-import { runIntelligence } from "@/lib/intelligence/run-intelligence";
+import { cachedIntelligence, cachedOverviewSummary } from "@/lib/evidence/cached";
 import type { IntelligenceRunOutput } from "@/lib/intelligence/contracts";
 import { EmptyState, KpiGrid, PageHeading, formatNumber, resolveRange } from "@/components/dashboard/PageParts";
+import { PageTip } from "@/components/dashboard/PageTip";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -27,13 +27,13 @@ export default async function IntelligencePage(props: PageProps) {
   const params = (await props.searchParams) ?? {};
   const { from, to } = resolveRange(params);
   const project = await getProjectMapping({ ref: params.project ?? null, workspaceId });
-  const summary = await getOverviewEvidenceSummary({ workspaceId, projectId: project.projectSlug, from, to });
+  const summary = await cachedOverviewSummary({ workspaceId, projectId: project.projectSlug, from, to });
 
   // Rule-based and read-only: computed live from stored evidence, never persisted from this page.
   let output: IntelligenceRunOutput = { insights: [], recommendations: [] };
   let failure: string | null = null;
   try {
-    output = await runIntelligence({
+    output = await cachedIntelligence({
       workspaceId,
       projectId: project.projectId,
       projectSlug: project.projectSlug,
@@ -69,6 +69,8 @@ export default async function IntelligencePage(props: PageProps) {
           from={from}
           to={to}
         />
+
+        <PageTip id="intelligence" title="Findings are ranked by impact" text="Start at the top. Each finding compares this period with the previous one and ends with one concrete action." href="/help#findings" />
 
         {failure ? <EmptyState title="Intelligence unavailable" body={failure} href={settingsHref} action="Check sources" /> : null}
         {!failure && insights.length === 0 ? (
