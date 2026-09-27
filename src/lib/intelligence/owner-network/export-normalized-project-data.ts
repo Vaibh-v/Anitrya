@@ -20,6 +20,7 @@ import {
   EVIDENCE_TABLE_SPECS,
   MAX_ROWS_PER_TAB_ENV,
   mergeProjectRows,
+  monthSlices,
   resolveMaxRowsPerTab,
   toSheetRow,
 } from "@/lib/export/normalized-evidence-specs";
@@ -144,7 +145,14 @@ export type OwnerEvidenceMirrorResult = {
  * Uses a fixed number of Sheets calls regardless of tab count and never
  * throws: failures are reported per tab.
  */
-async function mirrorProjectEvidence(input: {
+/**
+ * Mirrors this project's normalized evidence into month tabs of the customer
+ * workbook (e.g. gsc_query_daily__2026_09). Each export only touches the
+ * months in its window, so history accumulates without ever re-reading or
+ * rewriting older months — and older months can be archived once and kept.
+ * Other projects' rows in the same tab are preserved. Never throws.
+ */
+export async function mirrorProjectEvidence(input: {
   customerSpreadsheetId: string;
   workspaceId: string;
   projectId: string;
@@ -161,65 +169,61 @@ async function mirrorProjectEvidence(input: {
     project_slug: input.projectSlug,
     project_label: input.projectLabel,
   };
+  const months = monthSlices(input.from, input.to);
 
   const reads = await Promise.all(
-    EVIDENCE_TABLE_SPECS.map((spec) =>
-      readEvidenceTable({
-        spec,
-        workspaceId: input.workspaceId,
-        projectSlug: input.projectSlug,
-        from: input.from,
-        to: input.to,
-        limit,
-      }),
+    EVIDENCE_TABLE_SPECS.flatMap((spec) =>
+      months.map(async (month) => ({
+        month,
+        read: await readEvidenceTable({
+          spec,
+          workspaceId: input.workspaceId,
+          projectSlug: input.projectSlug,
+          from: month.from,
+          to: month.to,
+          limit,
+        }),
+      })),
     ),
   );
 
-  const tabs: OwnerEvidenceTabResult[] = [];
-  const writable = reads.filter((read) => {
-    if (read.status === "ok") return true;
-    tabs.push({
-      tab: read.spec.tab,
-      status: read.status,
-      rows: 0,
-      truncated: false,
-      error: read.error,
-    });
-    return false;
+  const totals = new Map<string, OwnerEvidenceTabResult>();
+  const writable = reads.filter(({ read }) => {
+    const current = totals.get(read.spec.tab) ?? { tab: read.spec.tab, status: "written" as const, rows: 0, truncated: false };
+    if (read.status !== "ok") {
+      totals.set(read.spec.tab, { ...current, status: read.status, error: read.error });
+      return false;
+    }
+    totals.set(read.spec.tab, { ...current, rows: current.rows + read.rows.length, truncated: current.truncated || read.truncated });
+    return read.rows.length > 0;
   });
 
   if (writable.length === 0) {
+    const tabs = [...totals.values()];
     return { status: tabs.some((t) => t.status === "error") ? "error" : "written", tabs };
   }
 
   try {
-    const tabNames = writable.map((read) => read.spec.tab);
+    const tabNames = writable.map(({ read, month }) => `${read.spec.tab}__${month.key}`);
     await ensureTabsExist(input.customerSpreadsheetId, tabNames);
     const existing = await readManySheetValues(input.customerSpreadsheetId, tabNames);
 
-    const writes = writable.map((read) => {
+    const writes = writable.map(({ read, month }, index) => {
+      const tabName = tabNames[index];
       const header =
         CUSTOMER_HEADERS[read.spec.tab] ??
         ["workspace_id", "project_id", "project_slug", "project_label", ...read.spec.columns, "synced_at"];
       const nextRows = read.rows.map((row) => toSheetRow(header, row, identity, input.syncedAt));
-
-      tabs.push({
-        tab: read.spec.tab,
-        status: "written",
-        rows: nextRows.length,
-        truncated: read.truncated,
-      });
-
       return {
-        tabName: read.spec.tab,
+        tabName,
         rows: mergeProjectRows({
-          existing: existing[read.spec.tab] ?? [],
+          existing: existing[tabName] ?? [],
           header,
           workspaceId: input.workspaceId,
           projectSlug: input.projectSlug,
           nextRows,
-          from: input.from,
-          to: input.to,
+          from: month.from,
+          to: month.to,
         }),
       };
     });
@@ -227,17 +231,13 @@ async function mirrorProjectEvidence(input: {
     // RAW keeps query/page strings literal (no formula interpretation).
     await clearAndWriteManySheets(input.customerSpreadsheetId, writes, "RAW");
 
-    // A missing table just means that source has never synced for this
-    // deployment; only read/write errors make the mirror partial.
-    return {
-      status: tabs.some((t) => t.status === "error") ? "partial" : "written",
-      tabs,
-    };
+    const tabs = [...totals.values()];
+    return { status: tabs.some((t) => t.status === "error") ? "partial" : "written", tabs };
   } catch (error) {
     console.error("OWNER_EXPORT_EVIDENCE_FAILED", error);
     return {
       status: "error",
-      tabs,
+      tabs: [...totals.values()],
       error: error instanceof Error ? error.message : "Evidence mirror failed.",
     };
   }

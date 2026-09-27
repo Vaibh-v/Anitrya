@@ -12,6 +12,8 @@ import { buildProjectIntegrationHealth } from "@/lib/integrations/project-integr
 import { GbpLocationMappingPanel } from "@/components/settings/GbpLocationMappingPanel";
 import { GoogleAdsAccountMappingPanel } from "@/components/settings/GoogleAdsAccountMappingPanel";
 import { ProjectDirectory } from "@/components/settings/ProjectDirectory";
+import { StoragePanel } from "@/components/settings/StoragePanel";
+import { resolveFounderWorkspaceId } from "@/lib/intelligence/owner-network/owner-auth";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -87,6 +89,8 @@ export default async function SettingsPage({
         projectId: selectedProject.slug,
       })
     : null;
+
+  const isFounder = Boolean(workspaceId && workspaceId === (await resolveFounderWorkspaceId()));
 
   const rangeLinks = [
     { key: "7d", label: "7D" },
@@ -178,6 +182,7 @@ export default async function SettingsPage({
 
           <section id="health" className="eye-step">
             <StepHead index="05" title="Health" text="Connection, mapping and sync readiness for every provider." />
+            {isFounder ? <StoragePanel /> : null}
             {integrationHealth ? <IntegrationReadinessPanel health={integrationHealth} /> : null}
           </section>
         </div>

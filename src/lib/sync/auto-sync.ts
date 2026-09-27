@@ -14,6 +14,7 @@ import { exportNormalizedProjectDataToOwnerSheet } from "@/lib/intelligence/owne
 import { exportIntelligenceToSheets } from "@/lib/intelligence/owner-network/export-intelligence-to-sheets";
 import { runIntelligence } from "@/lib/intelligence/run-intelligence";
 import { ownerSheetsAuthMode } from "@/lib/intelligence/owner-network/owner-auth";
+import { runStorageMaintenance } from "@/lib/storage/storage-manager";
 
 export const AUTO_SYNC_STAGES = [7, 28, 90] as const;
 const FRESH_HOURS = 6;
@@ -92,6 +93,14 @@ export async function runAutoSync(workspaceId: string, slugs: string[]) {
 
   // Invisible exports: nothing here is surfaced to the customer.
   if (!(await ownerSheetConfigured())) return;
+  await runOwnerExports(workspaceId, mappings);
+  // Keep the database inside its plan: archive + trim old long-tail rows (Lean mode only).
+  await runStorageMaintenance({ budgetMs: 90_000 }).catch((error) =>
+    console.error("AUTO_STORAGE_MAINTENANCE_FAILED", error instanceof Error ? error.message : error),
+  );
+}
+
+async function runOwnerExports(workspaceId: string, mappings: Array<NonNullable<Awaited<ReturnType<typeof getProjectMapping>>>>) {
   const { from, to } = stageWindow(28);
   await pool(
     mappings.map((mapping) => async () => {

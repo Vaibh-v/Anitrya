@@ -146,3 +146,23 @@ export function mergeProjectRows(input: {
 
   return [input.header, ...retained, ...input.nextRows];
 }
+
+/** Calendar-month slices of a window, e.g. 2026-08-28..2026-09-26 → 2026_08, 2026_09. */
+export function monthSlices(from: string, to: string): Array<{ key: string; from: string; to: string }> {
+  const slices: Array<{ key: string; from: string; to: string }> = [];
+  let cursor = from.slice(0, 7);
+  const last = to.slice(0, 7);
+  while (cursor <= last) {
+    const [y, m] = cursor.split("-").map(Number);
+    const monthStart = `${cursor}-01`;
+    const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+    slices.push({
+      key: cursor.replace("-", "_"),
+      from: monthStart < from ? from : monthStart,
+      to: monthEnd > to ? to : monthEnd,
+    });
+    const next = new Date(Date.UTC(y, m, 1));
+    cursor = next.toISOString().slice(0, 7);
+  }
+  return slices;
+}

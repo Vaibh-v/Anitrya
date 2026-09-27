@@ -371,3 +371,16 @@ a.eye-button { display: inline-flex; align-items: center; text-decoration: none;
 .eye-tip span { color: #cbd5e1; }
 .eye-tip a { color: var(--eye-cyan); }
 .eye-tip button { flex-shrink: 0; border: 1px solid var(--eye-border); border-radius: 8px; background: transparent; padding: 6px 10px; color: #e8eef7; font-size: 12px; cursor: pointer; }
+.eye-storage-bar { height: 8px; margin-top: 12px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+.eye-storage-bar span { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--eye-cyan), var(--eye-violet)); }
+.eye-storage-bar span.is-high { background: #f5c46b; }
+/* AI panel */
+.eye-ai-button { align-self: flex-start; margin-top: 8px; }
+.eye-ai { margin-top: 10px; border: 1px solid rgba(139,123,255,.35); border-radius: 12px; background: rgba(139,123,255,.06); padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.eye-ai-head { display: flex; align-items: center; gap: 8px; }
+.eye-ai-head strong { color: #fff; font-size: 13px; }
+.eye-ai p { margin: 0; font-size: 12.5px; line-height: 1.6; }
+.eye-ai-causes { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
+.eye-ai-models { font-size: 11px !important; }
+.eye-ai-ask { display: flex; gap: 8px; margin-top: 4px; }
+.eye-ai-ask input { flex: 1; min-width: 0; border: 1px solid var(--eye-border); border-radius: 10px; background: rgba(255,255,255,.04); padding: 8px 10px; color: #e8eef7; font-size: 12px; }

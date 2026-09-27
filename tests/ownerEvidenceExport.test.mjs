@@ -68,3 +68,12 @@ test("with a window, a project's older rows are kept so history accumulates", ()
   const merged = mergeProjectRows({ existing, header, workspaceId: "ws", projectSlug: "acme", nextRows: next, from: "2026-09-01", to: "2026-09-30" });
   assert.deepEqual(merged.map((r) => r[5]), ["metric", "OLD", "NEW"]);
 });
+
+test("windows split into calendar-month tabs", async () => {
+  const { monthSlices } = await import("../src/lib/export/normalized-evidence-specs.ts");
+  assert.deepEqual(monthSlices("2026-08-28", "2026-09-26"), [
+    { key: "2026_08", from: "2026-08-28", to: "2026-08-31" },
+    { key: "2026_09", from: "2026-09-01", to: "2026-09-26" },
+  ]);
+  assert.equal(monthSlices("2025-12-15", "2026-02-02").map((m) => m.key).join(","), "2025_12,2026_01,2026_02");
+});

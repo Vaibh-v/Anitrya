@@ -97,6 +97,25 @@ const STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "idx_semrush_evidence_snapshot_workspace_project_date" ON "semrush_evidence_snapshot" ("workspace_id", "project_slug", "date")`,
   `CREATE INDEX IF NOT EXISTS "idx_semrush_evidence_snapshot_workspace_project_domain_date" ON "semrush_evidence_snapshot" ("workspace_id", "project_slug", "domain", "database_code", "date")`,
+  // AI consensus memory: one row per question + evidence version.
+  `CREATE TABLE IF NOT EXISTS "ai_memory" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "workspace_id" TEXT NOT NULL,
+    "project_slug" TEXT NOT NULL,
+    "evidence_hash" TEXT NOT NULL,
+    "category" TEXT,
+    "question" TEXT NOT NULL,
+    "consensus" JSONB NOT NULL,
+    "created_at" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ai_memory_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "ai_memory_workspace_hash_key" ON "ai_memory" ("workspace_id", "evidence_hash")`,
+  // Weekly email opt-outs (one row per unsubscribed address).
+  `CREATE TABLE IF NOT EXISTS "email_optout" (
+    "email" TEXT NOT NULL,
+    "created_at" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "email_optout_pkey" PRIMARY KEY ("email")
+  )`,
 ];
 
 let pending: Promise<void> | null = null;
@@ -108,7 +127,7 @@ export function ensureAdditiveSchema(): Promise<void> {
       // One round trip in the common case: skip all DDL when every table exists.
       const present = await prisma.$queryRawUnsafe<Array<{ ok: boolean }>>(
         `SELECT (to_regclass('"SyncHealthRun"') IS NOT NULL AND to_regclass('gbp_location_daily') IS NOT NULL
-                 AND to_regclass('google_ads_campaign_daily') IS NOT NULL AND to_regclass('semrush_evidence_snapshot') IS NOT NULL) AS ok`,
+                 AND to_regclass('google_ads_campaign_daily') IS NOT NULL AND to_regclass('semrush_evidence_snapshot') IS NOT NULL AND to_regclass('ai_memory') IS NOT NULL AND to_regclass('email_optout') IS NOT NULL) AS ok`,
       );
       if (present[0]?.ok) return;
       for (const statement of STATEMENTS) {

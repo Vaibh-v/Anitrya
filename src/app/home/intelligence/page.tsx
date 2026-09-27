@@ -6,6 +6,7 @@ import { cachedIntelligence, cachedOverviewSummary } from "@/lib/evidence/cached
 import type { IntelligenceRunOutput } from "@/lib/intelligence/contracts";
 import { EmptyState, KpiGrid, PageHeading, formatNumber, resolveRange } from "@/components/dashboard/PageParts";
 import { PageTip } from "@/components/dashboard/PageTip";
+import { ExplainWithAI } from "@/components/intelligence/ExplainWithAI";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -134,6 +135,9 @@ export default async function IntelligencePage(props: PageProps) {
                   {typeof insight.confidence === "number" ? <span>Confidence {Math.round(insight.confidence * 100)}%</span> : <span>Data: {insight.dataSufficiency}</span>}
                   <span>Priority {insight.priorityScore}</span>
                 </div>
+                {insight.category !== "data_gap" ? (
+                  <ExplainWithAI project={project.projectSlug} insightId={insight.insightId} from={from} to={to} />
+                ) : null}
               </div>
             ))}
             {insights.length === 0 ? <p className="eye-panel-text">No findings for this range.</p> : null}
