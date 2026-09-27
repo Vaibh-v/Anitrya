@@ -25,7 +25,13 @@ export async function fetchAllGscRows(input: {
   maxRowsPerWindow?: number;
 }): Promise<GscApiRow[]> {
   const rows: GscApiRow[] = [];
-  for (const window of splitRange(input.from, input.to, 7)) {
+  // Search Console only keeps about 16 months; skip windows before that.
+  const earliest = new Date();
+  earliest.setUTCMonth(earliest.getUTCMonth() - 16);
+  const floor = earliest.toISOString().slice(0, 10);
+  const from = input.from < floor ? floor : input.from;
+  if (from > input.to) return rows;
+  for (const window of splitRange(from, input.to, 7)) {
     rows.push(...(await fetchWindow({ ...input, from: window.from, to: window.to })));
   }
   return rows;

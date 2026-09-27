@@ -26,10 +26,24 @@ function getSheetsJwt() {
   });
 }
 
+// Sheets allows 60 reads and 60 writes per minute per user. Exports run in the
+// background, so on 429 (or a transient 5xx) wait and retry instead of failing.
+const RETRY = {
+  retry: 6,
+  retryDelay: 2000,
+  retryDelayMultiplier: 2,
+  maxRetryDelay: 32_000,
+  httpMethodsToRetry: ["GET", "HEAD", "PUT", "POST", "OPTIONS"],
+  statusCodesToRetry: [
+    [429, 429],
+    [500, 599],
+  ] as [number, number][],
+};
+
 async function getSheetsClient(): Promise<sheets_v4.Sheets> {
   // Prefer the service account; otherwise write as the founder's Google sign-in.
   if (!serviceAccountConfigured()) {
-    return google.sheets({ version: "v4", auth: await founderSheetsAuth() });
+    return google.sheets({ version: "v4", auth: await founderSheetsAuth(), retryConfig: RETRY });
   }
   const auth = getSheetsJwt();
   await auth.authorize();
@@ -37,6 +51,7 @@ async function getSheetsClient(): Promise<sheets_v4.Sheets> {
   return google.sheets({
     version: "v4",
     auth,
+    retryConfig: RETRY,
   });
 }
 
@@ -149,32 +164,54 @@ export async function clearAndWriteSheet(
   });
 }
 
+const structureChecked = new Map<string, number>();
+
 export async function ensureSheetStructure(
+  spreadsheetId: string,
+  schema: Record<string, string[]>,
+) {
+  // Each check costs 1 + N reads; skip repeats within 10 minutes to stay under
+  // the 60-reads-per-minute quota.
+  const memoKey = `${spreadsheetId}:${JSON.stringify(schema)}`;
+  const checkedAt = structureChecked.get(memoKey);
+  if (checkedAt && Date.now() - checkedAt < 10 * 60_000) return;
+  await ensureSheetStructureUncached(spreadsheetId, schema);
+  structureChecked.set(memoKey, Date.now());
+}
+
+async function ensureSheetStructureUncached(
   spreadsheetId: string,
   schema: Record<string, string[]>,
 ) {
   const tabNames = Object.keys(schema);
   await ensureSpreadsheetTabs({ spreadsheetId, tabNames });
 
-  for (const tabName of tabNames) {
-    const expectedHeader = schema[tabName];
-    const existing = await readSheetValues(spreadsheetId, tabName);
+  // One batched read of just the header rows instead of one full read per tab.
+  const sheets = await getSheetsClient();
+  const response = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId,
+    ranges: tabNames.map((tabName) => `${tabName}!1:1`),
+  });
+  const headers = (response.data.valueRanges ?? []).map((range) => (range.values?.[0] ?? []).map((value) => String(value)));
 
-    if (existing.length === 0) {
+  for (const [index, tabName] of tabNames.entries()) {
+    const expectedHeader = schema[tabName];
+    const header = headers[index] ?? [];
+
+    if (header.length === 0) {
       await clearAndWriteSheet(spreadsheetId, tabName, [expectedHeader]);
       continue;
     }
 
-    const header = existing[0] ?? [];
     const sameHeader =
       header.length === expectedHeader.length &&
-      header.every((value, index) => value === expectedHeader[index]);
+      header.every((value, i) => value === expectedHeader[i]);
 
     if (!sameHeader) {
-      const bodyRows = existing.slice(1);
+      const existing = await readSheetValues(spreadsheetId, tabName);
       await clearAndWriteSheet(spreadsheetId, tabName, [
         expectedHeader,
-        ...bodyRows,
+        ...existing.slice(1),
       ]);
     }
   }

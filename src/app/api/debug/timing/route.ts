@@ -45,6 +45,20 @@ export async function GET(request: NextRequest) {
   if (mapping) {
     await time("runIntelligence", () => runIntelligence({ workspaceId, projectId: mapping.projectId, projectSlug: mapping.projectSlug, projectLabel: mapping.projectLabel, from, to }));
   }
+  if (request.nextUrl.searchParams.get("storage") === "1") {
+    // Read-only storage diagnostics for the Neon 512 MB limit.
+    timings.dbSize = await prisma.$queryRawUnsafe<Array<{ size: string }>>("SELECT pg_size_pretty(pg_database_size(current_database())) AS size")
+      .then((r) => r[0]?.size ?? "").catch((e) => `err ${e instanceof Error ? e.message.slice(0, 80) : ""}`);
+    timings.tables = JSON.stringify(await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT relname AS t, pg_size_pretty(pg_total_relation_size(relid)) AS total, n_live_tup::bigint AS live, n_dead_tup::bigint AS dead
+       FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 15`,
+    ).then((rows) => rows.map((r) => ({ ...r, live: String(r.live), dead: String(r.dead) }))).catch((e) => String(e).slice(0, 120)));
+    timings.gscDupes = JSON.stringify(await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
+      `SELECT project_slug, COUNT(*)::bigint AS rows, COUNT(DISTINCT (CAST(date AS TEXT), query))::bigint AS distinct_rows,
+              MIN(CAST(date AS TEXT)) AS first, MAX(CAST(date AS TEXT)) AS last
+       FROM gsc_query_daily GROUP BY project_slug ORDER BY 2 DESC`,
+    ).then((rows) => rows.map((r) => ({ ...r, rows: String(r.rows), distinct_rows: String(r.distinct_rows) }))).catch((e) => String(e).slice(0, 120)));
+  }
   timings.total = Date.now() - t0;
   timings.region = process.env.VERCEL_REGION ?? "unknown";
   try {
