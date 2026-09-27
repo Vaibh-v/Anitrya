@@ -47,7 +47,7 @@ export function cachedOverviewSummary(input: { workspaceId: string; projectId: s
 export function cachedIntelligence(input: IntelligenceRunInput) {
   return unstable_cache(
     () => runIntelligence(input),
-    ["intelligence-v2", input.workspaceId, input.projectSlug, input.from, input.to],
+    ["intelligence-v2.1", input.workspaceId, input.projectSlug, input.from, input.to],
     { tags: [evidenceTag(input.workspaceId, input.projectSlug)], revalidate: SIX_HOURS },
   )();
 }

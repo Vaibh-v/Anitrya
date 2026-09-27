@@ -38,13 +38,21 @@ function n(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-async function q(sql: string, params: unknown[]): Promise<Record<string, unknown>[]> {
-  try {
-    return await prisma.$queryRawUnsafe<Record<string, unknown>[]>(sql, ...params);
-  } catch (error) {
-    console.warn("INTEL_V2_QUERY_FAILED", error instanceof Error ? error.message.slice(0, 200) : error);
-    return [];
+/**
+ * Runs one aggregate. Retries once; if it still fails, returns [] for optional
+ * queries but throws for critical ones, so a half-computed result is never
+ * shown or cached as if it were complete.
+ */
+async function q(sql: string, params: unknown[], critical = false): Promise<Record<string, unknown>[]> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await prisma.$queryRawUnsafe<Record<string, unknown>[]>(sql, ...params);
+    } catch (error) {
+      console.warn("INTEL_V2_QUERY_FAILED", attempt, error instanceof Error ? error.message.slice(0, 300) : error);
+      if (attempt === 1 && critical) throw error;
+    }
   }
+  return [];
 }
 
 export async function loadEvidenceAggregates(input: {
@@ -66,6 +74,7 @@ export async function loadEvidenceAggregates(input: {
               SUM(CASE WHEN ${CUR} THEN 0 ELSE COALESCE(conversions,0) END) AS prev_conv
        FROM ga4_source_daily WHERE ${await scope("ga4_source_daily")} GROUP BY 1 ORDER BY 2 DESC NULLS LAST LIMIT 200`,
       params,
+      true,
     ),
     q(
       `SELECT landing_page AS label,
@@ -98,6 +107,7 @@ export async function loadEvidenceAggregates(input: {
          (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM gsc_page_daily WHERE ${await scope("gsc_page_daily")} AND ${CUR}) AS gsc_cur,
          (SELECT COUNT(DISTINCT CAST(date AS TEXT)) FROM gsc_page_daily WHERE ${await scope("gsc_page_daily")} AND NOT (${CUR})) AS gsc_prev`,
       params,
+      true,
     ),
   ]);
 

@@ -48,10 +48,73 @@ export function providerSummary() {
   return PROVIDERS.map((p) => ({ id: p.id, label: p.label, configured: Boolean(providerKey(p)), trainsOnInput: p.trainsOnInput, keyEnv: p.keyEnv }));
 }
 
-/** One JSON-mode completion; throws on HTTP or timeout errors. */
+// Preferred models, most capable first. When a provider retires a model the
+// next match is used automatically, so stale defaults never break the panel.
+const PREFERENCES: Partial<Record<ProviderId, RegExp[]>> = {
+  groq: [/llama-3\.3-70b/, /gpt-oss-120b/, /llama-4-maverick/, /llama-4-scout/, /qwen.*32b/, /llama-3\.1-8b/],
+  cerebras: [/llama-3\.3-70b/, /gpt-oss-120b/, /qwen-3-.*235b/, /llama-4/, /qwen/, /llama3\.1-8b/],
+  openrouter: [/llama-3\.3-70b.*:free$/, /deepseek.*:free$/, /qwen.*:free$/, /gemma.*:free$/, /mistral.*:free$/, /:free$/],
+  mistral: [/^mistral-small-latest$/, /^mistral-medium-latest$/, /^open-mistral-nemo/, /^mistral-small/],
+};
+const modelCache = new Map<ProviderId, { models: string[]; at: number }>();
+
+async function candidateModels(provider: ProviderConfig, key: string): Promise<string[]> {
+  const configured = process.env[provider.modelEnv]?.trim();
+  if (configured) return [configured];
+  const prefs = PREFERENCES[provider.id];
+  if (!prefs || provider.kind !== "openai") return [provider.defaultModel];
+  const cached = modelCache.get(provider.id);
+  let ids = cached && Date.now() - cached.at < 3600_000 ? cached.models : null;
+  if (!ids) {
+    try {
+      const response = await fetch(`${provider.baseUrl}/models`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(8000) });
+      const payload = await response.json().catch(() => ({}));
+      ids = (payload?.data ?? []).map((m: { id?: string }) => m.id).filter((id: unknown): id is string => typeof id === "string");
+      if (ids && ids.length) modelCache.set(provider.id, { models: ids, at: Date.now() });
+    } catch {
+      ids = null;
+    }
+  }
+  if (!ids || ids.length === 0) return [provider.defaultModel];
+  const picked: string[] = [];
+  for (const pattern of prefs) {
+    const match = ids.find((id) => pattern.test(id) && !picked.includes(id));
+    if (match) picked.push(match);
+    if (picked.length >= 2) break;
+  }
+  return picked.length ? picked : [provider.defaultModel];
+}
+
+/** One JSON-mode completion; tries the next preferred model if one is retired. */
 export async function complete(provider: ProviderConfig, system: string, user: string, timeoutMs = 25_000): Promise<string> {
   const key = providerKey(provider)!;
-  const model = process.env[provider.modelEnv]?.trim() || provider.defaultModel;
+  const models = await candidateModels(provider, key);
+  let lastError: unknown = null;
+  for (const model of models) {
+    try {
+      return await completeWith(provider, key, model, system, user, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof Error && /\b(404|400)\b/.test(error.message))) break;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Request failed");
+}
+
+async function readJson(response: Response): Promise<{ payload: any; text: string }> {
+  const text = await response.text().catch(() => "");
+  try {
+    return { payload: text ? JSON.parse(text) : {}, text };
+  } catch {
+    return { payload: {}, text };
+  }
+}
+
+function httpError(provider: ProviderConfig, response: Response, payload: any, text: string) {
+  const detail = payload?.error?.message ?? payload?.message ?? (typeof payload?.error === "string" ? payload.error : null) ?? (text.slice(0, 120) || response.statusText || "request failed");
+  return new Error(`${provider.label} ${response.status}: ${detail}`);
+}
+async function completeWith(provider: ProviderConfig, key: string, model: string, system: string, user: string, timeoutMs: number): Promise<string> {
   const signal = AbortSignal.timeout(timeoutMs);
 
   if (provider.kind === "gemini") {
@@ -65,8 +128,8 @@ export async function complete(provider: ProviderConfig, system: string, user: s
         generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
       }),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`${provider.label} ${response.status}: ${payload?.error?.message ?? "request failed"}`);
+    const { payload, text } = await readJson(response);
+    if (!response.ok) throw httpError(provider, response, payload, text);
     return payload?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
   }
 
@@ -77,27 +140,34 @@ export async function complete(provider: ProviderConfig, system: string, user: s
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({ model, max_tokens: 900, temperature: 0.2, system, messages: [{ role: "user", content: user }] }),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`${provider.label} ${response.status}: ${payload?.error?.message ?? "request failed"}`);
+    const { payload, text } = await readJson(response);
+    if (!response.ok) throw httpError(provider, response, payload, text);
     return (payload?.content ?? []).map((c: { text?: string }) => c.text ?? "").join("");
   }
 
-  const response = await fetch(`${provider.baseUrl}/chat/completions`, {
-    method: "POST",
-    signal,
-    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      max_tokens: 900,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`${provider.label} ${response.status}: ${payload?.error?.message ?? "request failed"}`);
+  const send = (jsonMode: boolean) =>
+    fetch(`${provider.baseUrl}/chat/completions`, {
+      method: "POST",
+      signal,
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        max_tokens: 900,
+        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      }),
+    });
+  let response = await send(true);
+  let { payload, text } = await readJson(response);
+  // Some models reject JSON mode; the prompt already asks for JSON, so retry without it.
+  if (!response.ok && response.status === 400 && /response_format|json/i.test(text)) {
+    response = await send(false);
+    ({ payload, text } = await readJson(response));
+  }
+  if (!response.ok) throw httpError(provider, response, payload, text);
   return payload?.choices?.[0]?.message?.content ?? "";
 }

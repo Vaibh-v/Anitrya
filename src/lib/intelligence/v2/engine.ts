@@ -79,7 +79,9 @@ export async function runIntelligenceV2(input: IntelligenceRunInput): Promise<In
 
   const generatedAt = new Date().toISOString();
   const runKey = `${input.workspaceId}__${input.projectId}__${input.from}__${input.to}`;
-  const hasData = agg.coverage.ga4CurDays > 0 || agg.coverage.gscCurDays > 0;
+  // Coverage can be missing if its query failed; aggregated rows also prove there is data.
+  const hasData =
+    agg.coverage.ga4CurDays > 0 || agg.coverage.gscCurDays > 0 || agg.sources.some((r) => r.cur > 0) || agg.queries.some((r) => r.curImpr > 0);
 
   if (!hasData) {
     findings.push({
