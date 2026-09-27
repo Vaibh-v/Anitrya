@@ -80,25 +80,59 @@ async function candidateModels(provider: ProviderConfig, key: string): Promise<s
   for (const pattern of prefs) {
     const match = ids.find((id) => pattern.test(id) && !picked.includes(id));
     if (match) picked.push(match);
-    if (picked.length >= 2) break;
+    if (picked.length >= (provider.id === "openrouter" ? 3 : 2)) break;
   }
   return picked.length ? picked : [provider.defaultModel];
 }
 
-/** One JSON-mode completion; tries the next preferred model if one is retired. */
+/** Error carrying the HTTP status and any retry-after hint. */
+export class ProviderError extends Error {
+  status: number;
+  retryAfterMs: number | null;
+  constructor(message: string, status: number, retryAfterMs: number | null = null) {
+    super(message);
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * One JSON-mode completion. A retired model (404/400) or a rate-limited one
+ * (429) falls through to the next preferred model; a short retry-after is
+ * honoured once so a momentary free-tier limit doesn't cost the answer.
+ */
 export async function complete(provider: ProviderConfig, system: string, user: string, timeoutMs = 25_000): Promise<string> {
   const key = providerKey(provider)!;
   const models = await candidateModels(provider, key);
+  const deadline = Date.now() + timeoutMs;
   let lastError: unknown = null;
   for (const model of models) {
-    try {
-      return await completeWith(provider, key, model, system, user, timeoutMs);
-    } catch (error) {
-      lastError = error;
-      if (!(error instanceof Error && /\b(404|400)\b/.test(error.message))) break;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = deadline - Date.now();
+      if (remaining < 3000) break;
+      try {
+        return await completeWith(provider, key, model, system, user, remaining);
+      } catch (error) {
+        lastError = error;
+        const status = error instanceof ProviderError ? error.status : 0;
+        const wait = error instanceof ProviderError ? error.retryAfterMs : null;
+        if (status === 429 && attempt === 0 && wait !== null && wait <= 5000 && deadline - Date.now() > wait + 4000) {
+          await sleep(wait);
+          continue;
+        }
+        break;
+      }
     }
+    const status = lastError instanceof ProviderError ? lastError.status : 0;
+    if (![400, 404, 429, 0].includes(status) || (status === 0 && !isEmptyReply(lastError))) break;
   }
   throw lastError instanceof Error ? lastError : new Error("Request failed");
+}
+
+function isEmptyReply(error: unknown) {
+  return error instanceof Error && /empty reply/.test(error.message);
 }
 
 async function readJson(response: Response): Promise<{ payload: any; text: string }> {
@@ -110,10 +144,33 @@ async function readJson(response: Response): Promise<{ payload: any; text: strin
   }
 }
 
-function httpError(provider: ProviderConfig, response: Response, payload: any, text: string) {
-  const detail = payload?.error?.message ?? payload?.message ?? (typeof payload?.error === "string" ? payload.error : null) ?? (text.slice(0, 120) || response.statusText || "request failed");
-  return new Error(`${provider.label} ${response.status}: ${detail}`);
+function friendly(status: number, detail: string) {
+  if (status === 402 || /prepayment|credits? (are )?depleted|insufficient.*(credit|balance|quota)/i.test(detail))
+    return "no credit on this key's project — use a key from a free-tier project";
+  if (status === 429) return "free-tier rate limit reached — will be used again once the limit resets";
+  if (status === 401 || status === 403) return `key rejected (${detail.slice(0, 80)}) — check the key and its permissions`;
+  return detail;
 }
+
+function httpError(provider: ProviderConfig, response: Response, payload: any, text: string) {
+  const detail = String(payload?.error?.message ?? payload?.message ?? (typeof payload?.error === "string" ? payload.error : null) ?? (text.slice(0, 120) || response.statusText || "request failed"));
+  const header = response.headers.get("retry-after");
+  const retryAfter = header === null || header.trim() === "" ? NaN : Number(header);
+  return new ProviderError(
+    `${provider.label} ${response.status}: ${friendly(response.status, detail)}`,
+    response.status,
+    Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter * 1000 : null,
+  );
+}
+
+/** Text of an OpenAI-style reply; some models return content as parts or leave it null. */
+function messageText(payload: any): string {
+  const content = payload?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return content.map((c: { text?: string }) => c?.text ?? "").join("");
+  return "";
+}
+
 async function completeWith(provider: ProviderConfig, key: string, model: string, system: string, user: string, timeoutMs: number): Promise<string> {
   const signal = AbortSignal.timeout(timeoutMs);
 
@@ -130,7 +187,9 @@ async function completeWith(provider: ProviderConfig, key: string, model: string
     });
     const { payload, text } = await readJson(response);
     if (!response.ok) throw httpError(provider, response, payload, text);
-    return payload?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+    const reply = payload?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
+    if (!reply.trim()) throw new Error(`${provider.label}: empty reply (${payload?.candidates?.[0]?.finishReason ?? payload?.promptFeedback?.blockReason ?? "no content"})`);
+    return reply;
   }
 
   if (provider.kind === "anthropic") {
@@ -145,11 +204,13 @@ async function completeWith(provider: ProviderConfig, key: string, model: string
     return (payload?.content ?? []).map((c: { text?: string }) => c.text ?? "").join("");
   }
 
+  const extraHeaders: Record<string, string> =
+    provider.id === "github" ? { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" } : {};
   const send = (jsonMode: boolean) =>
     fetch(`${provider.baseUrl}/chat/completions`, {
       method: "POST",
       signal,
-      headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${key}`, ...extraHeaders },
       body: JSON.stringify({
         model,
         temperature: 0.2,
@@ -163,11 +224,19 @@ async function completeWith(provider: ProviderConfig, key: string, model: string
     });
   let response = await send(true);
   let { payload, text } = await readJson(response);
-  // Some models reject JSON mode; the prompt already asks for JSON, so retry without it.
-  if (!response.ok && response.status === 400 && /response_format|json/i.test(text)) {
+  // Some models reject JSON mode, or accept it and reply with nothing; the
+  // prompt already asks for JSON, so retry once without it.
+  const rejectedJson = !response.ok && response.status === 400 && /response_format|json/i.test(text);
+  const emptyJson = response.ok && !messageText(payload).trim();
+  if (rejectedJson || emptyJson) {
     response = await send(false);
     ({ payload, text } = await readJson(response));
   }
   if (!response.ok) throw httpError(provider, response, payload, text);
-  return payload?.choices?.[0]?.message?.content ?? "";
+  const reply = messageText(payload);
+  if (!reply.trim()) {
+    const reason = payload?.choices?.[0]?.finish_reason ?? (payload?.choices ? "no content" : text.slice(0, 80) || "no choices");
+    throw new Error(`${provider.label}: empty reply (${reason})`);
+  }
+  return reply;
 }

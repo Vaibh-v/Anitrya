@@ -97,9 +97,15 @@ function similarity(a: string, b: string) {
 }
 
 function parseAnswer(raw: string) {
+  if (!raw.trim()) throw new Error("empty reply");
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
-  const parsed = JSON.parse(start >= 0 && end > start ? raw.slice(start, end + 1) : raw);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(start >= 0 && end > start ? raw.slice(start, end + 1) : raw);
+  } catch {
+    throw new Error("reply was not valid JSON");
+  }
   return {
     explanation: typeof parsed.explanation === "string" ? parsed.explanation.trim() : "",
     causes: Array.isArray(parsed.causes)

@@ -11,17 +11,24 @@ import { ownerSheetsAuthMode } from "@/lib/intelligence/owner-network/owner-auth
 import type { Consensus } from "@/lib/ai/consensus";
 
 const TAB = "ai_memory";
+const PARTIAL_TTL_MS = 3600_000;
 const HEADERS = ["created_at", "workspace_id", "project_slug", "category", "question", "agreement", "summary", "top_cause", "action", "models_ok", "models_total", "evidence_hash"];
 
 export async function recallConsensus(workspaceId: string, evidenceHash: string): Promise<Consensus | null> {
   try {
     await ensureAdditiveSchema();
-    const rows = await prisma.$queryRawUnsafe<Array<{ consensus: Consensus }>>(
-      `SELECT consensus FROM ai_memory WHERE workspace_id = $1 AND evidence_hash = $2 LIMIT 1`,
+    const rows = await prisma.$queryRawUnsafe<Array<{ consensus: Consensus; created_at: Date }>>(
+      `SELECT consensus, created_at FROM ai_memory WHERE workspace_id = $1 AND evidence_hash = $2 LIMIT 1`,
       workspaceId,
       evidenceHash,
     );
-    return rows[0]?.consensus ?? null;
+    const row = rows[0];
+    if (!row) return null;
+    // A complete panel is reused indefinitely; one where some models failed
+    // (rate limits, bad keys) is reused for an hour, then asked again.
+    const partial = row.consensus.models.some((m) => !m.ok);
+    if (partial && Date.now() - new Date(row.created_at).getTime() > PARTIAL_TTL_MS) return null;
+    return row.consensus;
   } catch {
     return null;
   }
