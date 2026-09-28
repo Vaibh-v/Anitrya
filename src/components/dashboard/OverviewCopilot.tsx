@@ -5,10 +5,10 @@ import { useState } from "react";
 
 type Answer = {
   summary: string | null;
+  models: Array<{ provider: string; ok: boolean; error?: string }>;
   causes: Array<{ cause: string; models: string[] }>;
   action: string | null;
   agreement: "strong" | "partial" | "weak" | "none";
-  models: Array<{ provider: string; ok: boolean }>;
 };
 
 const SUGGESTED = ["What should we fix first this week?", "Why are sessions changing?", "Where is the biggest missed opportunity?"];
@@ -50,7 +50,10 @@ export function OverviewCopilot(props: { project: string; from: string; to: stri
       {asked ? <p className="eye-chat-bubble eye-chat-question">{asked}</p> : null}
       {loading ? <p className="eye-chat-bubble">Asking every connected model and checking their numbers against your data…</p> : null}
       {error ? <p className="eye-message is-error">{error}</p> : null}
-      {answer ? (
+      {answer && agreed === 0 ? (
+        <p className="eye-message is-error">No model gave an answer that matched your data this time ({answer.models.map((m) => m.provider).join(", ")}). Try again in a minute.</p>
+      ) : null}
+      {answer && agreed > 0 ? (
         <div className="eye-chat-bubble">
           {answer.summary ? <p>{answer.summary}</p> : null}
           {answer.causes.length ? (

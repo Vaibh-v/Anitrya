@@ -46,6 +46,7 @@ Rules:
 - Explain in plain language why this is likely happening, for a business owner.
 - Propose 1-3 likely causes, each with a likelihood from 0 to 1.
 - Give one concrete next action.
+- Keep the explanation under 120 words and each cause under 25 words.
 - List every number you mention in "numbers_cited".
 Reply with JSON only: {"explanation": string, "causes": [{"cause": string, "likelihood": number}], "action": string, "numbers_cited": number[]}`;
 

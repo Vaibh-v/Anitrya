@@ -199,7 +199,7 @@ async function completeWith(provider: ProviderConfig, key: string, model: string
       method: "POST",
       signal,
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model, max_tokens: 900, temperature: 0.2, system, messages: [{ role: "user", content: user }] }),
+      body: JSON.stringify({ model, max_tokens: 1600, temperature: 0.2, system, messages: [{ role: "user", content: user }] }),
     });
     const { payload, text } = await readJson(response);
     if (!response.ok) throw httpError(provider, response, payload, text);
@@ -216,8 +216,10 @@ async function completeWith(provider: ProviderConfig, key: string, model: string
       body: JSON.stringify({
         model,
         temperature: 0.2,
-        max_tokens: 900,
+        max_tokens: 1600,
         ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+        // Keep any model-side thinking out of the reply and the token budget.
+        ...(provider.id === "openrouter" ? { reasoning: { effort: "low", exclude: true } } : {}),
         messages: [
           { role: "system", content: system },
           { role: "user", content: user },
