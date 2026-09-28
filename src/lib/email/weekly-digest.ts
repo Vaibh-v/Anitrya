@@ -1,9 +1,8 @@
 /**
  * Monday insight email: per project, 4 KPIs vs the previous week and the top 3
  * findings with their actions, built from data already synced. Sent with
- * Resend when RESEND_API_KEY is set. ANITRYA_EMAIL_FROM sets the sender; until
- * a domain is verified in Resend it defaults to Resend's test sender, which
- * can only deliver to the Resend account's own address.
+ * Resend when RESEND_API_KEY is set. The sender comes from ANITRYA_EMAIL_FROM
+ * or the first domain verified in Resend (see emailSender).
  */
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
@@ -19,8 +18,31 @@ export function emailConfigured() {
   return Boolean(process.env.RESEND_API_KEY?.trim());
 }
 
-export function emailSender() {
-  return process.env.ANITRYA_EMAIL_FROM?.trim() || TEST_SENDER;
+let senderCache: { value: string; at: number } | null = null;
+
+/**
+ * ANITRYA_EMAIL_FROM when set; otherwise the first domain verified in Resend
+ * (insights@<domain>), so verifying a domain there is all it takes. Falls
+ * back to Resend's test sender until a domain is verified.
+ */
+export async function emailSender(): Promise<string> {
+  const configured = process.env.ANITRYA_EMAIL_FROM?.trim();
+  if (configured) return configured;
+  if (senderCache && Date.now() - senderCache.at < 15 * 60_000) return senderCache.value;
+  let value = TEST_SENDER;
+  try {
+    const response = await fetch("https://api.resend.com/domains", {
+      headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    const payload = (await response.json().catch(() => null)) as { data?: Array<{ name?: string; status?: string }> } | null;
+    const verified = payload?.data?.find((d) => d.status === "verified" && d.name);
+    if (verified) value = `Anitrya <insights@${verified.name}>`;
+  } catch {
+    /* keep the test sender */
+  }
+  senderCache = { value, at: Date.now() };
+  return value;
 }
 
 export function unsubscribeToken(email: string) {
@@ -81,6 +103,7 @@ export async function sendWeeklyDigests(options: { onlyWorkspaceId?: string; onl
   sender?: string;
 }> {
   if (!emailConfigured()) return { sent: 0, skipped: "RESEND_API_KEY not set", errors: 0 };
+  const sender = await emailSender();
   await ensureAdditiveSchema();
   const optedOut = new Set(
     (await prisma.$queryRawUnsafe<Array<{ email: string }>>(`SELECT email FROM email_optout`).catch(() => [])).map((r) => r.email.toLowerCase()),
@@ -114,7 +137,7 @@ export async function sendWeeklyDigests(options: { onlyWorkspaceId?: string; onl
         method: "POST",
         headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" },
         body: JSON.stringify({
-          from: emailSender(),
+          from: sender,
           to: [email],
           subject: `Your weekly Anitrya insight — ${workspace.projects.length} project${workspace.projects.length === 1 ? "" : "s"}`,
           html,
@@ -131,5 +154,5 @@ export async function sendWeeklyDigests(options: { onlyWorkspaceId?: string; onl
       }
     }
   }
-  return { sent, skipped: null, errors, firstError, sender: emailSender() };
+  return { sent, skipped: null, errors, firstError, sender };
 }

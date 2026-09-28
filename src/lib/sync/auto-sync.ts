@@ -46,7 +46,7 @@ export async function pool<T>(tasks: Array<() => Promise<T>>, limit = CONCURRENC
 export async function projectsNeedingSync(workspaceId: string): Promise<string[]> {
   const projects = await prisma.project.findMany({
     where: { workspaceId, OR: [{ ga4PropertyId: { not: null } }, { gscSiteId: { not: null } }] },
-    select: { slug: true },
+    select: { slug: true, ga4PropertyId: true },
   });
   if (projects.length === 0) return [];
 
@@ -64,7 +64,15 @@ export async function projectsNeedingSync(workspaceId: string): Promise<string[]
       fresh.add(meta.projectSlug);
     }
   }
-  return projects.map((p) => p.slug).filter((slug) => !fresh.has(slug));
+  // A GA4 project with no geography yet (added after it last synced) needs one full pass.
+  const withGeo = new Set(
+    (
+      await prisma
+        .$queryRawUnsafe<Array<{ project_slug: string }>>(`SELECT DISTINCT project_slug FROM ga4_geo_daily WHERE workspace_id = $1`, workspaceId)
+        .catch(() => [])
+    ).map((r) => r.project_slug),
+  );
+  return projects.filter((p) => !fresh.has(p.slug) || (p.ga4PropertyId && !withGeo.has(p.slug))).map((p) => p.slug);
 }
 
 async function ownerSheetConfigured() {

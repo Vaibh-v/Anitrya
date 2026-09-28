@@ -96,8 +96,6 @@ export class ProviderError extends Error {
   }
 }
 
-const GITHUB_LEGACY_URL = "https://models.inference.ai.azure.com";
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -129,16 +127,6 @@ export async function complete(provider: ProviderConfig, system: string, user: s
     }
     const status = lastError instanceof ProviderError ? lastError.status : 0;
     if (![400, 404, 429, 0].includes(status) || (status === 0 && !isEmptyReply(lastError))) break;
-  }
-  // GitHub Models also serves the same models from its original Azure endpoint;
-  // use it when the new endpoint answers without a completion.
-  if (provider.id === "github" && isEmptyReply(lastError) && deadline - Date.now() > 3000) {
-    const legacy = { ...provider, baseUrl: GITHUB_LEGACY_URL };
-    try {
-      return await completeWith(legacy, key, models[0].replace(/^[^/]+\//, ""), system, user, deadline - Date.now());
-    } catch (error) {
-      lastError = new Error(`${(lastError as Error).message}; legacy endpoint: ${error instanceof Error ? error.message.replace(/^GitHub Models:? ?/, "") : "failed"}`);
-    }
   }
   throw lastError instanceof Error ? lastError : new Error("Request failed");
 }
@@ -238,7 +226,9 @@ async function completeWith(provider: ProviderConfig, key: string, model: string
   let { payload, text } = await readJson(response);
   // Some models reject JSON mode, or accept it and reply with nothing; the
   // prompt already asks for JSON, so retry once without it.
-  const rejectedJson = !response.ok && response.status === 400 && /response_format|json/i.test(text);
+  // Routers such as OpenRouter report an upstream JSON-mode rejection only as
+  // "Provider returned error", so any 400 gets one plain retry.
+  const rejectedJson = !response.ok && response.status === 400;
   const emptyJson = response.ok && !messageText(payload).trim();
   if (rejectedJson || emptyJson) {
     response = await send(false);

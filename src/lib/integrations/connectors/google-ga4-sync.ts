@@ -1,5 +1,6 @@
 import { fetchGA4LandingPageDaily } from "@/lib/integrations/google/ga4/fetch-ga4-landing";
 import { fetchGA4SourceDaily } from "@/lib/integrations/google/ga4/fetch-ga4-source-daily";
+import { fetchGA4GeoDaily } from "@/lib/integrations/google/ga4/fetch-ga4-geo";
 import type {
   IntegrationSyncContext,
   IntegrationSyncRunner,
@@ -33,7 +34,8 @@ export const googleGa4SyncRunner: IntegrationSyncRunner = {
       context.workspaceId,
     );
 
-    const [sourceRows, landingRows] = await Promise.all([
+    const geo = { workspaceId: context.workspaceId, projectSlug: context.mapping.projectSlug, propertyId, accessToken, from: context.from, to: context.to };
+    const [sourceRows, landingRows, geoRows] = await Promise.all([
       fetchGA4SourceDaily({
         workspaceId: context.workspaceId,
         projectSlug: context.mapping.projectSlug,
@@ -50,6 +52,11 @@ export const googleGa4SyncRunner: IntegrationSyncRunner = {
         from: context.from,
         to: context.to,
       }),
+      // Geography is additive: a failure here never fails the GA4 sync.
+      fetchGA4GeoDaily(geo).catch((error) => {
+        console.warn("GA4_GEO_SYNC_FAILED", context.mapping.projectSlug, error instanceof Error ? error.message : error);
+        return 0;
+      }),
     ]);
 
     const total = sourceRows + landingRows;
@@ -62,6 +69,7 @@ export const googleGa4SyncRunner: IntegrationSyncRunner = {
       details: {
         sourceRows,
         landingRows,
+        geoRows,
         propertyId,
       },
     };

@@ -64,20 +64,21 @@ test("rate-limited model falls through to the next one", async () => {
   }
 });
 
-test("GitHub Models falls back to its legacy endpoint on a non-completion reply", async () => {
+test("a bare 400 from a router is retried without JSON mode", async () => {
   const p = await import("../src/lib/ai/providers.ts");
   const provider = p.PROVIDERS.find((x) => x.id === "github");
   process.env.GITHUB_MODELS_TOKEN = "t";
   const realFetch = globalThis.fetch;
-  const seen = [];
+  const bodies = [];
   globalThis.fetch = async (url, init) => {
-    seen.push([String(url), JSON.parse(init.body).model]);
-    if (String(url).startsWith("https://models.github.ai")) return new Response("OK", { status: 200 });
+    const body = JSON.parse(init.body);
+    bodies.push(body);
+    if (body.response_format) return new Response(JSON.stringify({ error: { message: "Provider returned error" } }), { status: 400 });
     return new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 });
   };
   try {
     assert.equal(await p.complete(provider, "s", "u"), "{}");
-    assert.deepEqual(seen.at(-1), ["https://models.inference.ai.azure.com/chat/completions", "gpt-4o-mini"]);
+    assert.equal(bodies.length, 2);
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.GITHUB_MODELS_TOKEN;

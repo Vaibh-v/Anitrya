@@ -6,7 +6,8 @@ import { PageTip } from "@/components/dashboard/PageTip";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
 import { scopedProjectRef } from "@/lib/org/access";
-import { cachedBehaviorDetail, cachedOverviewSummary, cachedSeoDetail } from "@/lib/evidence/cached";
+import { cachedBehaviorDetail, cachedGeo, cachedOverviewSummary, cachedSeoDetail } from "@/lib/evidence/cached";
+import { globePoints } from "@/lib/geo/centroids";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -45,9 +46,10 @@ export default async function HomePage(props: PageProps) {
     : { ga4SourceRows: 0, ga4LandingRows: 0, gscQueryRows: 0, gscPageRows: 0, googleAdsCampaignRows: 0, gbpLocationRows: 0, failureReason: null };
 
   const scope = project ? { workspaceId, projectSlug: project.projectSlug, from, to } : null;
-  const [seo, behavior] = scope
-    ? await Promise.all([cachedSeoDetail(scope), cachedBehaviorDetail(scope)])
-    : [null, null];
+  const [seo, behavior, geo] = scope
+    ? await Promise.all([cachedSeoDetail(scope), cachedBehaviorDetail(scope), cachedGeo(scope)])
+    : [null, null, null];
+  const points = geo ? globePoints(geo.countries, geo.regions) : [];
   const performance = [
     { label: "Sessions", value: behavior?.sessions ?? 0, note: "GA4, all sources", color: "cyan" },
     { label: "Conversions", value: behavior?.conversions ?? 0, note: "GA4 key events", color: "violet" },
@@ -88,7 +90,7 @@ export default async function HomePage(props: PageProps) {
             <div>
               <span className="eye-overline">Anitrya / God&apos;s Eye</span>
               <h1>Market intelligence</h1>
-              <p>See the evidence behind every decision. The map is a visual surface; location signals are not yet connected.</p>
+              <p>See the evidence behind every decision. The globe shows where this project&apos;s visitors come from.</p>
             </div>
             <div className="eye-heading-project">
               <span>Active project</span>
@@ -130,7 +132,7 @@ export default async function HomePage(props: PageProps) {
             ))}
           </section>
 
-          <SignalGlobe key={project?.projectSlug ?? "missing"} projectLabel={project?.projectLabel ?? "No project"} searchRows={unavailable ? 0 : summary.gscQueryRows + summary.gscPageRows} trafficRows={unavailable ? 0 : summary.ga4SourceRows + summary.ga4LandingRows} paidRows={unavailable ? 0 : summary.googleAdsCampaignRows} localRows={unavailable ? 0 : summary.gbpLocationRows} />
+          <SignalGlobe key={project?.projectSlug ?? "missing"} projectLabel={project?.projectLabel ?? "No project"} searchRows={unavailable ? 0 : summary.gscQueryRows + summary.gscPageRows} trafficRows={unavailable ? 0 : summary.ga4SourceRows + summary.ga4LandingRows} paidRows={unavailable ? 0 : summary.googleAdsCampaignRows} localRows={unavailable ? 0 : summary.gbpLocationRows} points={unavailable ? [] : points} cities={geo?.cities.slice(0, 6) ?? []} totalSessions={geo?.totalSessions ?? 0} />
 
           <section className="eye-bento" aria-label="Intelligence modules">
             <div className="eye-panel">

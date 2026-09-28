@@ -3,6 +3,7 @@
  * date range, and dropped the moment a sync writes new evidence for that
  * project (see sync-audit). A 6-hour ceiling covers anything missed.
  */
+import { getGeoSummary } from "@/lib/integrations/google/ga4/fetch-ga4-geo";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { getBehaviorDetail, getSeoDetail } from "@/lib/evidence/page-insights";
 import { getOverviewEvidenceSummary } from "@/lib/evidence/normalized-overview-store";
@@ -42,6 +43,14 @@ export function cachedOverviewSummary(input: { workspaceId: string; projectId: s
     ["overview", input.workspaceId, input.projectId, input.from, input.to],
     { tags: [evidenceTag(input.workspaceId, input.projectId)], revalidate: SIX_HOURS },
   )().catch(() => getOverviewEvidenceSummary(input));
+}
+
+export function cachedGeo(input: { workspaceId: string; projectSlug: string; from: string; to: string }) {
+  return unstable_cache(
+    () => getGeoSummary(input),
+    ["geo-v1", input.workspaceId, input.projectSlug, input.from, input.to],
+    { tags: [evidenceTag(input.workspaceId, input.projectSlug)], revalidate: SIX_HOURS },
+  )().catch(() => ({ countries: [], regions: [], cities: [], totalSessions: 0 }));
 }
 
 export function cachedIntelligence(input: IntelligenceRunInput) {

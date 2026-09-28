@@ -107,6 +107,11 @@ button, input { font: inherit; }
 .eye-globe-summary { position: absolute; top: 14px; left: 14px; display: flex; flex-direction: column; gap: 3px; width: min(250px, calc(100% - 28px)); border: 1px solid var(--eye-border); border-radius: 12px; padding: 10px 12px; background: rgba(6,10,20,.72); backdrop-filter: blur(12px); pointer-events: none; }
 .eye-globe-summary strong { font-size: 19px; font-weight: 600; }
 .eye-globe-summary > span:last-child { color: var(--eye-muted); font-size: 11px; }
+.eye-globe-markets { position: absolute; top: 14px; right: 14px; width: min(220px, calc(100% - 28px)); border: 1px solid var(--eye-border); border-radius: 12px; padding: 10px 12px; background: rgba(6,10,20,.72); backdrop-filter: blur(12px); pointer-events: none; }
+.eye-globe-markets ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.eye-globe-markets li { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.eye-globe-markets li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eye-globe-markets li strong { color: #5cf2ff; font-weight: 600; }
 .eye-globe-layers, .eye-globe-filters { position: absolute; display: flex; flex-wrap: wrap; gap: 6px; }
 .eye-globe-layers { bottom: 62px; left: 14px; max-width: 335px; }
 .eye-globe-filters { right: 10px; bottom: 12px; left: 10px; justify-content: center; }
@@ -189,6 +194,7 @@ button, input { font: inherit; }
   .eye-bento { grid-template-columns: minmax(0,1fr); }
   .eye-globe-card { min-height: 470px; }
   .eye-globe-layers { bottom: 62px; }
+  .eye-globe-markets { top: auto; bottom: 104px; right: 14px; width: 180px; }
   .eye-landing-content { width: min(100% - 24px,650px); padding: 54px 0; }
   .eye-landing-sources { margin-top: 32px; }
 }
