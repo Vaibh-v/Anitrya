@@ -84,3 +84,10 @@ test("a bare 400 from a router is retried without JSON mode", async () => {
     delete process.env.GITHUB_MODELS_TOKEN;
   }
 });
+
+test("failing providers sit out: long for broken keys, short for rate limits", () => {
+  assert.equal(c.benchMinutes(new Error("Gemini 402: no credit on this key's project")), 60);
+  assert.equal(c.benchMinutes(new Error("GitHub Models: empty reply (body \"OK\")")), 60);
+  assert.equal(c.benchMinutes(new Error("Mistral 429: free-tier rate limit reached")), 10);
+  assert.equal(c.benchMinutes(new Error("reply was not valid JSON")), 0);
+});

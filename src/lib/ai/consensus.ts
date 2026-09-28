@@ -50,6 +50,26 @@ Rules:
 - List every number you mention in "numbers_cited".
 Reply with JSON only: {"explanation": string, "causes": [{"cause": string, "likelihood": number}], "action": string, "numbers_cited": number[]}`;
 
+const bench_until = new Map<string, number>();
+
+/** How long a provider sits out after a failure: long for broken keys/credit, short for rate limits. */
+export function benchMinutes(error: unknown): number {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/\b(401|402|403)\b|no credit|key rejected|empty reply/i.test(message)) return 60;
+  if (/\b429\b|rate limit/i.test(message)) return 10;
+  return 0;
+}
+
+function bench(id: string, error: unknown) {
+  const minutes = benchMinutes(error);
+  if (minutes > 0) bench_until.set(id, Date.now() + minutes * 60_000);
+}
+
+function benched(id: string) {
+  const until = bench_until.get(id);
+  return until !== undefined && until > Date.now();
+}
+
 export function evidencePacket(insight: IntelligenceInsight) {
   return {
     finding: insight.title,
@@ -154,7 +174,9 @@ export async function runConsensus(input: {
   const question = input.question?.trim() || "Why is this happening, and what should we do first?";
   const packet = evidencePacket(input.insight);
   const allowed = allowedNumbers(packet);
-  const providers: ProviderConfig[] = availableProviders({ allowTraining: input.allowTraining });
+  // Providers that just failed for a lasting reason sit out for a while, so a
+  // broken key never slows the panel; they rejoin on their own once it works.
+  const providers: ProviderConfig[] = availableProviders({ allowTraining: input.allowTraining }).filter((p) => !benched(p.id));
   const user = `Question: ${question}\n\nEvidence (JSON):\n${JSON.stringify(packet)}`;
 
   const models: ModelAnswer[] = await Promise.all(
@@ -174,6 +196,7 @@ export async function runConsensus(input: {
           ms: Date.now() - t0,
         };
       } catch (error) {
+        bench(provider.id, error);
         return { provider: provider.label, ok: false, error: error instanceof Error ? error.message.slice(0, 160) : "Failed", ms: Date.now() - t0 };
       }
     }),
