@@ -4,6 +4,8 @@ import { ensureAdditiveSchema } from "@/lib/db/ensure-additive-schema";
 import { projectsNeedingSync, runAutoSync } from "@/lib/sync/auto-sync";
 import { isOrgWritable } from "@/lib/org/access";
 import { measureDueOutcomes } from "@/lib/intelligence/outcomes";
+import { exportMarketTrends } from "@/lib/intelligence/market-trends";
+import { alertFounderIfNeeded } from "@/lib/ops/health";
 
 export const maxDuration = 300;
 
@@ -30,5 +32,8 @@ export async function GET(request: Request) {
     await runAutoSync(workspace.id, slugs).catch((error) => console.error("NIGHTLY_SYNC_FAILED", workspace.id, error));
     synced++;
   }
-  return NextResponse.json({ ok: true, workspaces: workspaces.length, synced, outcomes });
+  // Cross-business seasonality directory, then the self-check (emails the founder only on problems).
+  const trends = await exportMarketTrends().catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+  const health = await alertFounderIfNeeded().catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+  return NextResponse.json({ ok: true, workspaces: workspaces.length, synced, outcomes, trends, health });
 }

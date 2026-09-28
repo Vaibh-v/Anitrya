@@ -185,6 +185,27 @@ const STATEMENTS = [
     "users" INTEGER NOT NULL DEFAULT 0,
     "key_events" INTEGER NOT NULL DEFAULT 0
   )`,
+  // Search Console history by month: the seasonal memory.
+  `CREATE TABLE IF NOT EXISTS "gsc_query_monthly" (
+    "workspace_id" TEXT NOT NULL,
+    "project_slug" TEXT NOT NULL,
+    "month" TEXT NOT NULL,
+    "query" TEXT NOT NULL,
+    "clicks" INTEGER NOT NULL DEFAULT 0,
+    "impressions" INTEGER NOT NULL DEFAULT 0,
+    "position" DOUBLE PRECISION NOT NULL DEFAULT 0
+  )`,
+  `CREATE INDEX IF NOT EXISTS "gsc_query_monthly_scope_idx" ON "gsc_query_monthly" ("workspace_id", "project_slug", "month")`,
+  // AI provider health, shared by every server instance.
+  `CREATE TABLE IF NOT EXISTS "ai_provider_health" (
+    "provider" TEXT NOT NULL,
+    "ok" BOOLEAN NOT NULL,
+    "error" TEXT,
+    "ms" INTEGER,
+    "benched_until" TIMESTAMP(6),
+    "checked_at" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "ai_provider_health_pkey" PRIMARY KEY ("provider")
+  )`,
   // Stripe billing on the organization's plan row.
   `ALTER TABLE "org_plan" ADD COLUMN IF NOT EXISTS "stripe_customer_id" TEXT`,
   `ALTER TABLE "org_plan" ADD COLUMN IF NOT EXISTS "stripe_subscription_id" TEXT`,
@@ -221,7 +242,7 @@ export function ensureAdditiveSchema(): Promise<void> {
       // One round trip in the common case: skip all DDL when every table exists.
       const present = await prisma.$queryRawUnsafe<Array<{ ok: boolean }>>(
         `SELECT (to_regclass('"SyncHealthRun"') IS NOT NULL AND to_regclass('gbp_location_daily') IS NOT NULL
-                 AND to_regclass('google_ads_campaign_daily') IS NOT NULL AND to_regclass('semrush_evidence_snapshot') IS NOT NULL AND to_regclass('ai_memory') IS NOT NULL AND to_regclass('email_optout') IS NOT NULL AND to_regclass('org_plan') IS NOT NULL AND to_regclass('org_invite') IS NOT NULL AND to_regclass('member_scope') IS NOT NULL AND to_regclass('user_pref') IS NOT NULL AND to_regclass('audit_log') IS NOT NULL AND to_regclass('ga4_geo_daily') IS NOT NULL AND to_regclass('recommendation_outcome') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'org_plan' AND column_name = 'stripe_customer_id') AND EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'Role' AND e.enumlabel = 'CLIENT_VIEWER')) AS ok`,
+                 AND to_regclass('google_ads_campaign_daily') IS NOT NULL AND to_regclass('semrush_evidence_snapshot') IS NOT NULL AND to_regclass('ai_memory') IS NOT NULL AND to_regclass('email_optout') IS NOT NULL AND to_regclass('org_plan') IS NOT NULL AND to_regclass('org_invite') IS NOT NULL AND to_regclass('member_scope') IS NOT NULL AND to_regclass('user_pref') IS NOT NULL AND to_regclass('audit_log') IS NOT NULL AND to_regclass('ga4_geo_daily') IS NOT NULL AND to_regclass('recommendation_outcome') IS NOT NULL AND to_regclass('gsc_query_monthly') IS NOT NULL AND to_regclass('ai_provider_health') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'org_plan' AND column_name = 'stripe_customer_id') AND EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'Role' AND e.enumlabel = 'CLIENT_VIEWER')) AS ok`,
       );
       if (present[0]?.ok) return;
       for (const statement of STATEMENTS) {

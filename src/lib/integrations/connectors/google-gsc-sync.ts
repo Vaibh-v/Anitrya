@@ -1,5 +1,6 @@
 import { fetchGSCPageDaily } from "@/lib/integrations/google/gsc/fetch-gsc-page";
 import { fetchGSCQueryDaily } from "@/lib/integrations/google/gsc/fetch-gsc-query";
+import { syncGscMonthly } from "@/lib/integrations/google/gsc/fetch-gsc-monthly";
 import type {
   IntegrationSyncContext,
   IntegrationSyncRunner,
@@ -52,6 +53,16 @@ export const googleGscSyncRunner: IntegrationSyncRunner = {
       }),
     ]);
 
+    // Seasonal history rides along with the long (90-day) pass only.
+    const spanDays = (Date.parse(context.to) - Date.parse(context.from)) / 86400_000;
+    const monthlyRows =
+      spanDays >= 60
+        ? await syncGscMonthly({ workspaceId: context.workspaceId, projectSlug: context.mapping.projectSlug, siteUrl, accessToken }).catch((error) => {
+            console.warn("GSC_MONTHLY_SYNC_FAILED", context.mapping.projectSlug, error instanceof Error ? error.message : error);
+            return 0;
+          })
+        : 0;
+
     const total = queryRows + pageRows;
 
     return {
@@ -62,6 +73,7 @@ export const googleGscSyncRunner: IntegrationSyncRunner = {
       details: {
         queryRows,
         pageRows,
+        monthlyRows,
         siteUrl,
       },
     };

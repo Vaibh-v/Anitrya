@@ -15,6 +15,7 @@ import { ProjectDirectory } from "@/components/settings/ProjectDirectory";
 import { StoragePanel } from "@/components/settings/StoragePanel";
 import { TeamPanel } from "@/components/settings/TeamPanel";
 import { BillingPanel } from "@/components/settings/BillingPanel";
+import { HealthPanel } from "@/components/settings/HealthPanel";
 import { can, getAccess } from "@/lib/org/access";
 import { resolveFounderWorkspaceId } from "@/lib/intelligence/owner-network/owner-auth";
 
@@ -206,6 +207,7 @@ export default async function SettingsPage({
 
           <section id="health" className="eye-step">
             <StepHead index="05" title="Health" text="Connection, mapping and sync readiness for every provider." />
+            {isFounder ? <HealthPanel /> : null}
             {isFounder ? <StoragePanel /> : null}
             {integrationHealth ? <IntegrationReadinessPanel health={integrationHealth} /> : null}
           </section>

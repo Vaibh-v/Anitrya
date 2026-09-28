@@ -70,6 +70,37 @@ function benched(id: string) {
   return until !== undefined && until > Date.now();
 }
 
+const QUORUM = 2;
+const GRACE_MS = 4000;
+
+/**
+ * Runs every task; resolves when all finish, or GRACE_MS after `quorum` of
+ * them succeed. Tasks still running then are reported as skipped for time.
+ */
+export async function settleWithQuorum(tasks: Array<{ label: string; run: () => Promise<ModelAnswer> }>, quorum: number, graceMs: number): Promise<ModelAnswer[]> {
+  const results: Array<ModelAnswer | undefined> = new Array(tasks.length);
+  const started = Date.now();
+  return new Promise((resolve) => {
+    let done = 0;
+    let okCount = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const finish = () => {
+      if (timer) clearTimeout(timer);
+      resolve(tasks.map((t, i) => results[i] ?? { provider: t.label, ok: false, error: "Skipped: slower than the other models", ms: Date.now() - started }));
+    };
+    if (tasks.length === 0) return resolve([]);
+    tasks.forEach((task, i) => {
+      task.run().then((answer) => {
+        results[i] = answer;
+        done++;
+        if (answer.ok) okCount++;
+        if (done === tasks.length) return finish();
+        if (okCount >= quorum && !timer) timer = setTimeout(finish, graceMs);
+      });
+    });
+  });
+}
+
 export function evidencePacket(insight: IntelligenceInsight) {
   return {
     finding: insight.title,
@@ -171,37 +202,49 @@ export async function runConsensus(input: {
   question?: string;
   allowTraining: boolean;
   weightFor?: (provider: string, category: string) => number;
+  /** Share provider health across instances (off in tests). */
+  persistHealth?: boolean;
 }): Promise<Consensus> {
   const question = input.question?.trim() || "Why is this happening, and what should we do first?";
   const packet = evidencePacket(input.insight);
   const allowed = allowedNumbers(packet);
   // Providers that just failed for a lasting reason sit out for a while, so a
   // broken key never slows the panel; they rejoin on their own once it works.
-  const providers: ProviderConfig[] = availableProviders({ allowTraining: input.allowTraining }).filter((p) => !benched(p.id));
+  // A benched provider (see benchMinutes) is skipped on every server instance.
+  const shared = input.persistHealth ? await import("@/lib/ai/provider-health").catch(() => null) : null;
+  const benchedShared = shared ? await shared.benchedProviders().catch(() => new Set<string>()) : new Set<string>();
+  const providers: ProviderConfig[] = availableProviders({ allowTraining: input.allowTraining }).filter((p) => !benched(p.id) && !benchedShared.has(p.id));
   const user = `Question: ${question}\n\nEvidence (JSON):\n${JSON.stringify(packet)}`;
 
-  const models: ModelAnswer[] = await Promise.all(
-    providers.map(async (provider) => {
-      const t0 = Date.now();
-      try {
-        const parsed = parseAnswer(await complete(provider, SYSTEM, user));
-        const verification = verificationScore(parsed.numbersCited, allowed);
-        const trust = input.weightFor?.(provider.id, input.insight.category) ?? 1;
-        return {
-          provider: provider.label,
-          ok: verification >= 0.6 && parsed.explanation.length > 0,
-          ...(verification < 0.6 ? { error: "Cited numbers that don't match the data" } : {}),
-          ...parsed,
-          verification: Math.round(verification * 100) / 100,
-          weight: Math.round(trust * verification * 100) / 100,
-          ms: Date.now() - t0,
-        };
-      } catch (error) {
-        bench(provider.id, error);
-        return { provider: provider.label, ok: false, error: error instanceof Error ? error.message.slice(0, 160) : "Failed", ms: Date.now() - t0 };
-      }
-    }),
-  );
+  const health: Array<{ id: string; ok: boolean; error?: string; ms: number; benchMinutes: number }> = [];
+  const ask = async (provider: ProviderConfig): Promise<ModelAnswer> => {
+    const t0 = Date.now();
+    try {
+      const parsed = parseAnswer(await complete(provider, SYSTEM, user));
+      const verification = verificationScore(parsed.numbersCited, allowed);
+      const trust = input.weightFor?.(provider.id, input.insight.category) ?? 1;
+      health.push({ id: provider.id, ok: true, ms: Date.now() - t0, benchMinutes: 0 });
+      return {
+        provider: provider.label,
+        ok: verification >= 0.6 && parsed.explanation.length > 0,
+        ...(verification < 0.6 ? { error: "Cited numbers that don't match the data" } : {}),
+        ...parsed,
+        verification: Math.round(verification * 100) / 100,
+        weight: Math.round(trust * verification * 100) / 100,
+        ms: Date.now() - t0,
+      };
+    } catch (error) {
+      bench(provider.id, error);
+      const message = error instanceof Error ? error.message.slice(0, 160) : "Failed";
+      health.push({ id: provider.id, ok: false, error: message, ms: Date.now() - t0, benchMinutes: benchMinutes(error) });
+      return { provider: provider.label, ok: false, error: message, ms: Date.now() - t0 };
+    }
+  };
+
+  // Quorum: once two verified answers are in, slower models get a short grace
+  // period instead of holding the whole answer until their timeout.
+  const models = await settleWithQuorum(providers.map((p) => ({ label: p.label, run: () => ask(p) })), QUORUM, GRACE_MS);
+  if (shared) void shared.recordProviderResults(health);
 
   const valid = models.filter((m) => m.ok);
   const causes = tallyCauses(valid);

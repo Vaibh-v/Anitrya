@@ -56,7 +56,7 @@ export function cachedGeo(input: { workspaceId: string; projectSlug: string; fro
 export function cachedIntelligence(input: IntelligenceRunInput) {
   return unstable_cache(
     () => runIntelligence(input),
-    ["intelligence-v2.2", input.workspaceId, input.projectSlug, input.from, input.to],
+    ["intelligence-v2.3", input.workspaceId, input.projectSlug, input.from, input.to],
     { tags: [evidenceTag(input.workspaceId, input.projectSlug)], revalidate: SIX_HOURS },
   )();
 }

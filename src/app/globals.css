@@ -406,3 +406,5 @@ a.eye-button { display: inline-flex; align-items: center; text-decoration: none;
 .eye-billing-plan .eye-button { margin-top: auto; }
 .eye-finding-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 .eye-finding-actions > .eye-ai { flex-basis: 100%; order: 2; }
+.eye-health-list { display: grid; gap: 6px; margin-top: 8px; }
+.eye-health-list .eye-row { align-items: flex-start; gap: 10px; }

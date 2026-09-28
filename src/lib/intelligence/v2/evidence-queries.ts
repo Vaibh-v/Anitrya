@@ -15,6 +15,8 @@ export type SourceAgg = { label: string; cur: number; prev: number; curEngaged: 
 export type LandingAgg = { label: string; cur: number; prev: number; curEngaged: number; curConv: number };
 export type QueryAgg = { label: string; curClicks: number; curImpr: number; curPos: number; prevClicks: number; prevImpr: number; prevPos: number };
 export type DailyAgg = { date: string; value: number };
+export type SeasonAgg = { label: string; thisLy: number; nextLy: number; thisNow: number };
+export type Season = { thisMonth: string; nextMonth: string; thisLyKey: string; nextLyKey: string; queries: SeasonAgg[] };
 export type GeoAgg = { id: string; name: string; cur: number; prev: number; curConv: number; prevConv: number };
 
 export type EvidenceAggregates = {
@@ -27,6 +29,8 @@ export type EvidenceAggregates = {
   dailyClicks: DailyAgg[];
   /** Sessions and key events by country (empty until geography has synced). */
   countries: GeoAgg[];
+  /** Same month and next month last year, from the monthly Search Console history. */
+  season: Season | null;
   coverage: { ga4CurDays: number; ga4PrevDays: number; gscCurDays: number; gscPrevDays: number };
 };
 
@@ -67,7 +71,8 @@ export async function loadEvidenceAggregates(input: {
   const window = buildWindow(input.from, input.to);
   const params = [input.workspaceId, input.projectSlug, window.from, window.to, window.prevFrom];
 
-  const [sources, landings, queries, pages, dailySessions, dailyClicks, coverage, countries] = await Promise.all([
+  const season = seasonKeys(window.to);
+  const [sources, landings, queries, pages, dailySessions, dailyClicks, coverage, countries, seasonRows] = await Promise.all([
     q(
       `SELECT COALESCE(NULLIF(source,''),'(direct)') || COALESCE(' / ' || NULLIF(medium,''),'') AS label,
               SUM(CASE WHEN ${CUR} THEN sessions ELSE 0 END) AS cur,
@@ -123,6 +128,15 @@ export async function loadEvidenceAggregates(input: {
        GROUP BY country_id ORDER BY 3 DESC NULLS LAST LIMIT 80`,
       params,
     ),
+    q(
+      `SELECT query AS label,
+              SUM(CASE WHEN month = $3 THEN impressions ELSE 0 END) AS this_ly,
+              SUM(CASE WHEN month = $4 THEN impressions ELSE 0 END) AS next_ly,
+              SUM(CASE WHEN month = $5 THEN impressions ELSE 0 END) AS this_now
+       FROM gsc_query_monthly WHERE workspace_id = $1 AND project_slug = $2 AND month IN ($3, $4, $5)
+       GROUP BY query ORDER BY 3 DESC NULLS LAST LIMIT 400`,
+      [input.workspaceId, input.projectSlug, season.thisLyKey, season.nextLyKey, season.thisNowKey],
+    ),
   ]);
 
   const c = coverage[0] ?? {};
@@ -147,6 +161,15 @@ export async function loadEvidenceAggregates(input: {
     pages: pages.map(toSearch),
     dailySessions: dailySessions.map((r) => ({ date: String(r.d), value: n(r.v) })),
     dailyClicks: dailyClicks.map((r) => ({ date: String(r.d), value: n(r.v) })),
+    season: seasonRows.length
+      ? {
+          thisMonth: season.thisName,
+          nextMonth: season.nextName,
+          thisLyKey: season.thisLyKey,
+          nextLyKey: season.nextLyKey,
+          queries: seasonRows.map((r) => ({ label: String(r.label ?? ""), thisLy: n(r.this_ly), nextLy: n(r.next_ly), thisNow: n(r.this_now) })),
+        }
+      : null,
     countries: countries.map((r) => ({
       id: String(r.id ?? ""),
       name: String(r.name ?? r.id ?? ""),
@@ -162,6 +185,16 @@ export async function loadEvidenceAggregates(input: {
       gscPrevDays: n(c.gsc_prev),
     },
   };
+}
+
+/** Month keys for the seasonal comparison, anchored on the window's last day. */
+export function seasonKeys(to: string) {
+  const d = new Date(`${to}T00:00:00Z`);
+  const key = (y: number, m: number) => new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7);
+  const name = (y: number, m: number) => new Date(Date.UTC(y, m, 1)).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  return { thisLyKey: key(y - 1, m), nextLyKey: key(y - 1, m + 1), thisNowKey: key(y, m), thisName: name(y, m), nextName: name(y, m + 1) };
 }
 
 function searchSql(table: string, column: string, limit: number, where: string) {

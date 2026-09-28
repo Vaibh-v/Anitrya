@@ -19,7 +19,7 @@ export type Finding = {
   unit: "clicks" | "sessions" | "engaged sessions" | "conversions" | "impressions";
   confidence: number;
   severity: IntelligenceSeverity;
-  table: "ga4_source_daily" | "ga4_landing_page_daily" | "gsc_query_daily" | "gsc_page_daily" | "ga4_geo_daily";
+  table: "ga4_source_daily" | "ga4_landing_page_daily" | "gsc_query_daily" | "gsc_page_daily" | "ga4_geo_daily" | "gsc_query_monthly";
   comparison?: { label: string; current: number; previous: number; unit: string };
   rowHeaders?: string[];
   rows?: Array<{ label: string; values: string[] }>;
@@ -507,6 +507,65 @@ export function botTraffic(ctx: DetectorContext): Finding | null {
   };
 }
 
+/* 13. Seasonal demand: what happened in the coming month last year */
+export function seasonalDemand(ctx: DetectorContext): Finding | null {
+  const season = ctx.agg.season;
+  if (!season) return null;
+  const rows = season.queries.filter((r) => !isSpamQuery(r.label) && !isBrandQuery(r.label, ctx));
+  const thisLy = rows.reduce((t, r) => t + r.thisLy, 0);
+  const nextLy = rows.reduce((t, r) => t + r.nextLy, 0);
+  if (thisLy < 300 || nextLy === 0) return null;
+  const change = nextLy / thisLy - 1;
+  const risers = rows
+    .filter((r) => r.nextLy >= 50 && r.nextLy >= r.thisLy * 1.4)
+    .sort((a, b) => b.nextLy - b.thisLy - (a.nextLy - a.thisLy))
+    .slice(0, 7);
+  const rising = change >= 0.2 || risers.length >= 3;
+  const falling = change <= -0.25;
+  if (!rising && !falling) return null;
+
+  if (rising) {
+    const extra = risers.reduce((t, r) => t + (r.nextLy - r.thisLy), 0);
+    return {
+      key: "seasonal_demand",
+      category: "seasonal_demand",
+      title: `Search demand rose ${signedPct(change)} from ${season.thisMonth} to ${season.nextMonth} last year — ${count(risers.length, "topic", "topics")} surge${risers.length === 1 ? "s" : ""}`,
+      finding: risers.length
+        ? `Last year “${risers[0].label}” went from ${fmt(risers[0].thisLy)} to ${fmt(risers[0].nextLy)} impressions a month. These topics are about to peak again.`
+        : `Impressions across your non-brand queries went from ${fmt(thisLy)} to ${fmt(nextLy)} last year.`,
+      rationale: "Your own Search Console history for the same months last year. Pages refreshed 2–4 weeks before a seasonal peak have time to be recrawled and move up before the demand arrives.",
+      action: `Before ${season.nextMonth}: refresh the page that ranks for each rising topic (dates, offers, FAQs), link to it from the home page, and if you run ads, raise budgets on these terms for the peak weeks.`,
+      expectedOutcome: `More of the ${season.nextMonth} demand lands on your pages instead of competitors'.`,
+      impact: Math.max(extra, nextLy - thisLy),
+      unit: "impressions",
+      confidence: Math.min(0.85, 0.5 + Math.min(thisLy, 5000) / 20000),
+      severity: change >= 0.5 || risers.length >= 5 ? "high" : "medium",
+      table: "gsc_query_monthly",
+      comparison: { label: `Impressions ${season.thisMonth} → ${season.nextMonth}, last year`, current: nextLy, previous: thisLy, unit: "impressions" },
+      rowHeaders: ["Query", `${season.thisMonth} last year`, `${season.nextMonth} last year`, `${season.thisMonth} so far`],
+      rows: (risers.length ? risers : rows.slice(0, 6)).map((r) => ({ label: r.label, values: [fmt(r.thisLy), fmt(r.nextLy), fmt(r.thisNow)] })),
+    };
+  }
+  const fallers = [...rows].filter((r) => r.thisLy >= 50).sort((a, b) => b.thisLy - b.nextLy - (a.thisLy - a.nextLy)).slice(0, 6);
+  return {
+    key: "seasonal_demand",
+    category: "seasonal_demand",
+    title: `Expect a seasonal dip: demand fell ${pct(-change, 0)} from ${season.thisMonth} to ${season.nextMonth} last year`,
+    finding: `Impressions across your non-brand queries went from ${fmt(thisLy)} to ${fmt(nextLy)} last year, so a drop next month is likely the season, not a problem with the site.`,
+    rationale: "Your own Search Console history for the same months last year.",
+    action: `Use the quieter ${season.nextMonth} for site improvements and content for the next peak, and hold paid budgets back to match demand.`,
+    expectedOutcome: "No wasted spend or false alarms during the seasonal low.",
+    impact: thisLy - nextLy,
+    unit: "impressions",
+    confidence: 0.6,
+    severity: "low",
+    table: "gsc_query_monthly",
+    comparison: { label: `Impressions ${season.thisMonth} → ${season.nextMonth}, last year`, current: nextLy, previous: thisLy, unit: "impressions" },
+    rowHeaders: ["Query", `${season.thisMonth} last year`, `${season.nextMonth} last year`, `${season.thisMonth} so far`],
+    rows: fallers.map((r) => ({ label: r.label, values: [fmt(r.thisLy), fmt(r.nextLy), fmt(r.thisNow)] })),
+  };
+}
+
 function totalImpr(ctx: DetectorContext) {
   return ctx.agg.queries.reduce((t, r) => t + r.curImpr, 0);
 }
@@ -524,6 +583,7 @@ export const DETECTORS = [
   spamSignal,
   concentration,
   botTraffic,
+  seasonalDemand,
 ];
 
 export type { QueryAgg };

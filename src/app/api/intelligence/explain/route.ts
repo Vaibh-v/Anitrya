@@ -116,7 +116,7 @@ export async function POST(request: Request) {
 
   // Models whose past advice on this kind of finding worked count for more.
   const weightFor = await loadTrust(workspaceId).catch(() => undefined);
-  const consensus = await runConsensus({ insight, question, allowTraining, weightFor });
+  const consensus = await runConsensus({ insight, question, allowTraining, weightFor, persistHealth: true });
   if (consensus.models.some((m) => m.ok)) {
     after(() => rememberConsensus({ workspaceId, projectSlug: project.projectSlug, category: insight.category, consensus }));
   }

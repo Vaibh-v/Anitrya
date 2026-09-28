@@ -9,7 +9,7 @@ const q = (label, curClicks, curImpr, curPos, prevClicks = 0, prevImpr = 0, prev
 const base = (over = {}) => ({
   agg: {
     window: buildWindow("2026-08-28", "2026-09-26"),
-    sources: [], landings: [], queries: [], pages: [], dailySessions: [], dailyClicks: [], countries: [],
+    sources: [], landings: [], queries: [], pages: [], dailySessions: [], dailyClicks: [], countries: [], season: null,
     coverage: { ga4CurDays: 30, ga4PrevDays: 30, gscCurDays: 30, gscPrevDays: 30 },
     ...over,
   },
@@ -66,3 +66,15 @@ test("non-converting traffic outside the home market is flagged as likely bots",
   assert.ok(f.comparison.current > f.comparison.previous, "clean conversion rate is higher");
   assert.equal(d.botTraffic(base({ countries: [c("US", "United States", 900, 10), c("CA", "Canada", 60, 1)] })), null, "a converting neighbour is not bots");
 });
+
+test("seasonal demand: last year's coming month drives a prepare-now finding", () => {
+  const s = (label, thisLy, nextLy, thisNow = 0) => ({ label, thisLy, nextLy, thisNow });
+  const season = { thisMonth: "September", nextMonth: "October", thisLyKey: "2025-09", nextLyKey: "2025-10",
+    queries: [s("furnace repair", 120, 610, 140), s("heater not working", 60, 300), s("boiler service", 80, 190), s("water heater repair", 400, 380), s("john owens services", 900, 950)] };
+  const f = d.seasonalDemand(base({ season }));
+  assert.ok(f && f.category === "seasonal_demand");
+  assert.match(f.title, /October last year/);
+  assert.equal(f.rows[0].label, "furnace repair");
+  assert.ok(f.rows.every((r) => r.label !== "john owens services"), "brand demand is excluded");
+});
+

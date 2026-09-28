@@ -14,6 +14,8 @@ export function outcomeTarget(insight: Pick<IntelligenceInsight, "category" | "i
       return { table, labelExpr: "page", metric: "clicks", lowerIsBetter: false };
     case "ga4_landing_page_daily":
       return { table, labelExpr: "landing_page", metric: conversions ? "conversions" : "sessions", lowerIsBetter: false };
+    case "gsc_query_monthly":
+      return { table: "gsc_query_daily", labelExpr: "query", metric: "clicks", lowerIsBetter: false };
     case "ga4_geo_daily":
       return { table, labelExpr: "country", metric: "sessions", lowerIsBetter: true };
     default:

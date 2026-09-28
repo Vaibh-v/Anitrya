@@ -91,3 +91,11 @@ test("failing providers sit out: long for broken keys, short for rate limits", (
   assert.equal(c.benchMinutes(new Error("Mistral 429: free-tier rate limit reached")), 10);
   assert.equal(c.benchMinutes(new Error("reply was not valid JSON")), 0);
 });
+
+test("quorum: two verified answers don't wait for a slow model", async () => {
+  const ok = (p, ms) => ({ label: p, run: () => new Promise((r) => setTimeout(() => r({ provider: p, ok: true, ms }), ms)) });
+  const t0 = Date.now();
+  const out = await c.settleWithQuorum([ok("A", 10), ok("B", 20), ok("Slow", 5000)], 2, 100);
+  assert.ok(Date.now() - t0 < 1000);
+  assert.deepEqual(out.map((m) => [m.provider, m.ok]), [["A", true], ["B", true], ["Slow", false]]);
+});
