@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { PLANS } from "@/lib/org/plans";
+import { priceLabel } from "@/lib/billing/stripe-core";
 
 export const metadata = { title: "Pricing · Anitrya" };
 
-// Display prices come from env so they can change without a deploy of copy:
-// ANITRYA_PRICE_STARTER="$49/mo" etc. Checkout always charges the Stripe price.
-const PRICE = (id: string) => process.env[`ANITRYA_PRICE_${id.toUpperCase()}`]?.trim() || null;
 
 const PLAN_COPY: Record<string, { who: string; extras: string[] }> = {
   starter: { who: "One business", extras: ["Instant Insight dashboard", "Weekly insight email", "AI panel with verified numbers"] },
@@ -30,7 +28,7 @@ export default function PricingPage() {
             <div key={id} className="eye-panel eye-pricing-card">
               <strong>{PLANS[id].label}</strong>
               <span className="eye-finding-muted">{PLAN_COPY[id].who}</span>
-              <span className="eye-price">{PRICE(id) ?? "—"}</span>
+              <span className="eye-price">{priceLabel(id)}</span>
               <ul>
                 <li>{PLANS[id].projects} projects (websites)</li>
                 <li>{PLANS[id].seats} team seats</li>

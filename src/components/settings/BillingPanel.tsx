@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-type Plan = { id: string; label: string; projects: number; seats: number; aiPerMonth: number; available: boolean };
-type Status = { plan: string; label: string; status: string; trialEndsAt: string | null; canManage: boolean; enabled: boolean; plans: Plan[] };
+type Plan = { id: string; label: string; projects: number; seats: number; aiPerMonth: number; available: boolean; price: string };
+type Status = { plan: string; label: string; status: string; trialEndsAt: string | null; canManage: boolean; enabled: boolean; setupError?: string | null; plans: Plan[] };
 
 const PRICE_HINT: Record<string, string> = { starter: "For one business", growth: "For growing teams", agency: "For agencies with many clients" };
 
@@ -66,7 +66,7 @@ export function BillingPanel() {
             const current = plan.id === status.plan && paid;
             return (
               <div key={plan.id} className={`eye-billing-plan ${current ? "is-current" : ""}`}>
-                <strong>{plan.label}</strong>
+                <strong>{plan.label} <span className="eye-mono">{plan.price}</span></strong>
                 <span className="eye-finding-muted">{PRICE_HINT[plan.id]}</span>
                 <ul>
                   <li>{plan.projects} projects</li>
@@ -92,6 +92,7 @@ export function BillingPanel() {
       ) : null}
       {!status.enabled && status.plan !== "founder" ? <p className="eye-finding-muted">Online payment is being set up; contact us to upgrade in the meantime.</p> : null}
       {!status.canManage && status.plan !== "founder" ? <p className="eye-finding-muted">Only the organization owner can change the plan.</p> : null}
+      {status.setupError ? <p className="eye-message is-error">Stripe setup: {status.setupError}</p> : null}
       {error ? <p className="eye-message is-error">{error}</p> : null}
     </div>
   );

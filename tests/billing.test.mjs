@@ -22,9 +22,11 @@ test("webhook signatures are verified, including age", () => {
   assert.ok(!b.verifyWebhook(payload, `t=${t - 600},v1=${crypto.createHmac("sha256", secret).update(`${t - 600}.${payload}`).digest("hex")}`, secret), "too old");
 });
 
-test("prices map back to plans", () => {
-  process.env.STRIPE_PRICE_GROWTH = "price_growth";
-  assert.equal(b.planForPrice("price_growth"), "growth");
-  assert.equal(b.planForPrice("price_other"), null);
-  delete process.env.STRIPE_PRICE_GROWTH;
+test("prices map back to plans and keys are found under any saved name", () => {
+  assert.equal(b.planForPrice({ growth: "price_growth" }, "price_growth"), "growth");
+  assert.equal(b.planForPrice({ growth: "price_growth" }, "price_other"), null);
+  process.env.STRIPE_Key = "sk_test_x";
+  assert.equal(b.stripeKey(), "sk_test_x");
+  delete process.env.STRIPE_Key;
+  assert.equal(b.priceLabel("starter"), "$49/mo");
 });

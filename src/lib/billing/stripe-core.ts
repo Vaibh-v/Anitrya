@@ -4,18 +4,46 @@ import crypto from "node:crypto";
 export const PAID_PLANS = ["starter", "growth", "agency"] as const;
 export type PaidPlan = (typeof PAID_PLANS)[number];
 
-export function priceFor(plan: PaidPlan): string | null {
+/** Monthly list price per plan, in the smallest currency unit (cents). */
+export const DEFAULT_PRICES: Record<PaidPlan, number> = { starter: 4900, growth: 14900, agency: 39900 };
+
+export function currency() {
+  return (process.env.ANITRYA_CURRENCY?.trim() || "usd").toLowerCase();
+}
+
+/** "$49/mo" style label, from ANITRYA_PRICE_<PLAN> or the default amount. */
+export function priceLabel(plan: PaidPlan): string {
+  const custom = process.env[`ANITRYA_PRICE_${plan.toUpperCase()}`]?.trim();
+  if (custom) return custom;
+  const amount = DEFAULT_PRICES[plan] / 100;
+  const symbol = { usd: "$", eur: "€", gbp: "£", inr: "₹", aud: "A$", cad: "C$" }[currency()] ?? `${currency().toUpperCase()} `;
+  return `${symbol}${amount.toLocaleString("en-US")}/mo`;
+}
+
+/** The Stripe secret key, under any of the names it may be saved as. */
+export function stripeKey(): string | null {
+  for (const name of ["STRIPE_SECRET_KEY", "STRIPE_Key", "STRIPE_KEY", "STRIPE_API_KEY", "STRIPE_SECRET"]) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+/** A price id pinned in Vercel (STRIPE_PRICE_STARTER…); otherwise Anitrya creates and remembers one. */
+export function envPrice(plan: PaidPlan): string | null {
   return process.env[`STRIPE_PRICE_${plan.toUpperCase()}`]?.trim() || null;
 }
 
 export function billingConfigured() {
-  return Boolean(process.env.STRIPE_SECRET_KEY?.trim()) && PAID_PLANS.some((p) => priceFor(p));
+  return Boolean(stripeKey());
 }
 
-export function planForPrice(priceId: string | null | undefined): PaidPlan | null {
+export function planForPrice(prices: Partial<Record<PaidPlan, string>>, priceId: string | null | undefined): PaidPlan | null {
   if (!priceId) return null;
-  return PAID_PLANS.find((p) => priceFor(p) === priceId) ?? null;
+  return PAID_PLANS.find((p) => prices[p] === priceId) ?? null;
 }
+
+export const WEBHOOK_EVENTS = ["checkout.session.completed", "customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"];
 
 /** Stripe form encoding, including nested keys like line_items[0][price]. */
 export function formEncode(data: Record<string, unknown>, prefix = ""): string {
