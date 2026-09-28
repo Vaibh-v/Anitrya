@@ -64,6 +64,8 @@ async function candidateModels(provider: ProviderConfig, key: string): Promise<s
   const configured = process.env[provider.modelEnv]?.trim();
   if (configured) return [configured];
   const prefs = PREFERENCES[provider.id];
+  // Gemini: when the main model is overloaded, its lighter siblings usually aren't.
+  if (provider.id === "gemini") return [provider.defaultModel, "gemini-flash-lite-latest", "gemini-2.5-flash"];
   if (!prefs || provider.kind !== "openai") return [provider.defaultModel];
   const cached = modelCache.get(provider.id);
   let ids = cached && Date.now() - cached.at < 3600_000 ? cached.models : null;
@@ -128,7 +130,7 @@ export async function complete(provider: ProviderConfig, system: string, user: s
       }
     }
     const status = lastError instanceof ProviderError ? lastError.status : 0;
-    if (![400, 404, 429, 0].includes(status) || (status === 0 && !isEmptyReply(lastError))) break;
+    if (![400, 404, 429, 500, 503, 0].includes(status) || (status === 0 && !isEmptyReply(lastError))) break;
   }
   throw lastError instanceof Error ? lastError : new Error("Request failed");
 }
