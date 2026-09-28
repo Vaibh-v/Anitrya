@@ -82,7 +82,25 @@ export async function healthReport(): Promise<{ checks: Check[]; worst: Check["s
       : { area: "Email", status: "warn", detail: "RESEND_API_KEY is not set; weekly emails are off." },
   );
 
-  // 6. Scheduled jobs.
+  // 6. Instant Insight: time from new project to first insight (last 20 onboardings).
+  const timings = await prisma
+    .$queryRawUnsafe<Array<{ seconds: number; timed_out: boolean }>>(
+      `SELECT (detail->>'seconds')::int AS seconds, COALESCE((detail->>'timedOut')::boolean, false) AS timed_out
+       FROM audit_log WHERE action = 'onboarding.first_insight' ORDER BY created_at DESC LIMIT 20`,
+    )
+    .catch(() => []);
+  if (timings.length) {
+    const sorted = timings.map((t) => t.seconds).sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const over = timings.filter((t) => t.seconds > 59 || t.timed_out).length;
+    checks.push({
+      area: "Instant Insight",
+      status: over === 0 ? "ok" : over <= timings.length / 4 ? "warn" : "fail",
+      detail: `Median ${median}s from new project to first insight over the last ${timings.length} onboardings; ${over} over 59s.`,
+    });
+  }
+
+  // 7. Scheduled jobs.
   checks.push(
     process.env.CRON_SECRET?.trim()
       ? { area: "Scheduled jobs", status: "ok", detail: "Nightly sync and Monday email are scheduled." }

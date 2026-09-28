@@ -1,3 +1,4 @@
+import { sessionWorkspaceId } from "@/lib/org/session-workspace";
 import { NextResponse } from "next/server";
 import { listRecommendationOutcomes } from "@/lib/intelligence/outcome-store";
 
@@ -22,7 +23,8 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
 
-    const workspaceId = normalize(searchParams.get("workspaceId"));
+    // Always the caller's own workspace; a workspaceId in the URL is ignored.
+    const workspaceId = (await sessionWorkspaceId()) ?? "";
     const projectSlug = normalize(searchParams.get("projectSlug"));
     const hypothesisTitle = normalize(searchParams.get("hypothesisTitle"));
     const limitRaw = Number(searchParams.get("limit") ?? 20);

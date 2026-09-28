@@ -25,10 +25,11 @@ export default async function LandingPage() {
         <section className="eye-landing-copy">
           <span className="eye-overline">Anitrya · Instant Insight</span>
           <h1>Sign in. Know what to fix — in under a minute.</h1>
-          <p>Anitrya reads your Google Analytics and Search Console, compares this period with the last, and ranks what matters most with the exact next step. No setup, no sync button.</p>
+          <p>Anitrya reads your Google Analytics and Search Console, compares this period with the last, and ranks what matters most with the exact next step. No setup, no sync button. Free for 14 days, no card needed.</p>
           <div className="eye-landing-actions">
             {isSignedIn ? <Link className="eye-primary" href="/home">Open workspace →</Link> : <SignInButton />}
             <Link href="/help" className="eye-secondary">How it works</Link>
+            <Link href="/pricing" className="eye-secondary">Pricing</Link>
                       </div>
           <div className="eye-landing-sources" aria-label="Evidence sources">
             <span>GA4</span><span>Search Console</span><span>Google Ads</span><span>Business Profile</span>
@@ -41,7 +42,12 @@ export default async function LandingPage() {
           <div className="eye-preview-bottom"><span>Source coverage</span><span>Decision brief</span><span>Next actions</span></div>
         </section>
       </div>
-      <footer className="eye-landing-footer">Anitrya · Evidence first. Decisions second.</footer>
+      <footer className="eye-landing-footer">
+        Anitrya · Evidence first. Decisions second.
+        <Link href="/pricing">Pricing</Link>
+        <Link href="/privacy">Privacy</Link>
+        <Link href="/terms">Terms</Link>
+      </footer>
     </main>
   );
 }

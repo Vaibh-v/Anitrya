@@ -47,3 +47,21 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ ok: true, needed, stages, errors: [...new Set(errors)] });
 }
+
+/** POST { project, seconds, timedOut? } — records time from project creation to first insight. */
+export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions);
+  const workspaceId = session?.user?.workspaceId;
+  if (!workspaceId) return NextResponse.json({ ok: false }, { status: 401 });
+  const body = (await request.json().catch(() => ({}))) as { project?: string; seconds?: number; timedOut?: boolean };
+  const seconds = Math.max(0, Math.min(3600, Math.round(Number(body.seconds) || 0)));
+  await prisma
+    .$executeRawUnsafe(
+      `INSERT INTO audit_log (workspace_id, actor_email, action, detail) VALUES ($1, $2, 'onboarding.first_insight', CAST($3 AS JSONB))`,
+      workspaceId,
+      session?.user?.email ?? "",
+      JSON.stringify({ project: String(body.project ?? "").slice(0, 120), seconds, timedOut: Boolean(body.timedOut) }),
+    )
+    .catch(() => undefined);
+  return NextResponse.json({ ok: true });
+}

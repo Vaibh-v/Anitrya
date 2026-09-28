@@ -16,6 +16,8 @@ import { StoragePanel } from "@/components/settings/StoragePanel";
 import { TeamPanel } from "@/components/settings/TeamPanel";
 import { BillingPanel } from "@/components/settings/BillingPanel";
 import { HealthPanel } from "@/components/settings/HealthPanel";
+import { DeleteDataPanel } from "@/components/settings/DeleteDataPanel";
+import { prisma } from "@/lib/prisma";
 import { can, getAccess } from "@/lib/org/access";
 import { resolveFounderWorkspaceId } from "@/lib/intelligence/owner-network/owner-auth";
 
@@ -74,6 +76,9 @@ export default async function SettingsPage({
   const { from, to } = resolveDateRange(preset);
 
   const access = await getAccess();
+  const orgName = access?.role === "OWNER"
+    ? (await prisma.workspace.findUnique({ where: { id: access.workspaceId }, select: { name: true } }))?.name ?? null
+    : null;
   const scopedSlug =
     access?.projectScope && !(activeProjectSlug && access.projectScope.includes(activeProjectSlug))
       ? access.projectScope[0] ?? null
@@ -222,6 +227,7 @@ export default async function SettingsPage({
       <section id="billing" className="eye-step">
         <StepHead index="07" title="Plan & billing" text="Your plan, what it includes, and upgrades — paid securely through Stripe." />
         <BillingPanel />
+        {orgName ? <DeleteDataPanel orgName={orgName} /> : null}
       </section>
 
       {selectedProject ? null : (

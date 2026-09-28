@@ -1,3 +1,4 @@
+import { sessionWorkspaceId } from "@/lib/org/session-workspace";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { resolveDateRange } from "@/lib/intelligence/date-range";
@@ -102,9 +103,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-    });
+    // Scoped to the caller's workspace: a project id from another organization is "not found".
+    const callerWorkspaceId = await sessionWorkspaceId();
+    const project = callerWorkspaceId
+      ? await prisma.project.findFirst({ where: { id: projectId, workspaceId: callerWorkspaceId } })
+      : null;
 
     if (!project) {
       return jsonResponse(

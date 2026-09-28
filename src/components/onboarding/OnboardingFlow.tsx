@@ -99,10 +99,13 @@ export function OnboardingFlow(props: { firstName: string | null; returning: boo
       if (payload?.stages) setStages(payload.stages);
       const pulse = payload?.stages?.find((s: Stage) => s.days === 7);
       if (pulse?.done) {
+        // Instant Insight is measured on every new project (see Settings → Health).
+        void fetch("/api/onboarding/progress", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: slug, seconds: Math.round((Date.now() - started.current) / 1000) }) }).catch(() => {});
         setTimeout(() => router.push(`/home?project=${encodeURIComponent(slug!)}&preset=7d`), 900);
         return;
       }
       if (Date.now() - started.current > 120_000) {
+        void fetch("/api/onboarding/progress", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: slug, seconds: 120, timedOut: true }) }).catch(() => {});
         router.push(`/home?project=${encodeURIComponent(slug!)}`);
         return;
       }

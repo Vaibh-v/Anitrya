@@ -6,6 +6,7 @@ import { isOrgWritable } from "@/lib/org/access";
 import { measureDueOutcomes } from "@/lib/intelligence/outcomes";
 import { exportMarketTrends } from "@/lib/intelligence/market-trends";
 import { alertFounderIfNeeded } from "@/lib/ops/health";
+import { sendTrialNotices } from "@/lib/email/trial-emails";
 
 export const maxDuration = 300;
 
@@ -34,6 +35,7 @@ export async function GET(request: Request) {
   }
   // Cross-business seasonality directory, then the self-check (emails the founder only on problems).
   const trends = await exportMarketTrends().catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+  const trialNotices = await sendTrialNotices().catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
   const health = await alertFounderIfNeeded().catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
-  return NextResponse.json({ ok: true, workspaces: workspaces.length, synced, outcomes, trends, health });
+  return NextResponse.json({ ok: true, workspaces: workspaces.length, synced, outcomes, trends, trialNotices, health });
 }

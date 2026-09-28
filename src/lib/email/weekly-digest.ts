@@ -67,6 +67,20 @@ function delta(cur: number, prev: number) {
   return ` <span style="color:${color}">${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(0)}%</span>`;
 }
 
+/** One plain-English sentence about the week, like an analyst would open with. */
+export function weekHeadline(sessions: number, prevSessions: number, clicks: number, prevClicks: number, conversions: number) {
+  const move = (cur: number, prev: number, noun: string) => {
+    if (!prev) return `${fmt(cur)} ${noun}`;
+    const pct = Math.round(((cur - prev) / prev) * 100);
+    if (Math.abs(pct) < 3) return `${noun} held steady at ${fmt(cur)}`;
+    return `${noun} ${pct > 0 ? "rose" : "fell"} ${Math.abs(pct)}% to ${fmt(cur)}`;
+  };
+  const a = move(sessions, prevSessions, "visits");
+  const b = move(clicks, prevClicks, "search clicks");
+  const c = conversions ? `, with ${fmt(conversions)} ${conversions === 1 ? "conversion" : "conversions"}` : "";
+  return `Last week ${a} and ${b}${c}.`;
+}
+
 async function projectSection(workspaceId: string, project: { id: string; slug: string; name: string }) {
   const cur = { workspaceId, projectSlug: project.slug, from: day(7), to: day(1) };
   const prev = { workspaceId, projectSlug: project.slug, from: day(14), to: day(8) };
@@ -86,8 +100,10 @@ async function projectSection(workspaceId: string, project: { id: string; slug: 
   ] as const;
   const findings = (intel?.insights ?? []).filter((i) => i.category !== "data_gap").slice(0, 3);
   const link = `${APP_URL}/home/intelligence?project=${encodeURIComponent(project.slug)}`;
+  const headline = weekHeadline(beh.sessions, behPrev.sessions, seo.clicks, seoPrev.clicks, beh.conversions);
   return `
     <h2 style="margin:28px 0 8px;font-size:18px;color:#0b1220">${esc(project.name)}</h2>
+    <p style="margin:0 0 10px;font-size:15px;line-height:1.55">${esc(headline)}${findings[0] ? ` <strong>The one thing to do this week:</strong> ${esc(findings[0].recommendedAction)}` : ""}</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px">${kpis
       .map(([label, c, p]) => `<tr><td style="padding:6px 0;color:#475569">${label}</td><td style="padding:6px 0;text-align:right;font-weight:600">${fmt(c)}${delta(c, p)}</td></tr>`)
       .join("")}</table>
