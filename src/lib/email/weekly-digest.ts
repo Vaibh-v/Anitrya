@@ -1,7 +1,9 @@
 /**
  * Monday insight email: per project, 4 KPIs vs the previous week and the top 3
  * findings with their actions, built from data already synced. Sent with
- * Resend when RESEND_API_KEY and ANITRYA_EMAIL_FROM are set; otherwise skipped.
+ * Resend when RESEND_API_KEY is set. ANITRYA_EMAIL_FROM sets the sender; until
+ * a domain is verified in Resend it defaults to Resend's test sender, which
+ * can only deliver to the Resend account's own address.
  */
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
@@ -11,8 +13,14 @@ import { runIntelligence } from "@/lib/intelligence/run-intelligence";
 
 const APP_URL = process.env.NEXTAUTH_URL?.replace(/\/$/, "") || "https://anitrya.vercel.app";
 
+export const TEST_SENDER = "Anitrya <onboarding@resend.dev>";
+
 export function emailConfigured() {
-  return Boolean(process.env.RESEND_API_KEY?.trim() && process.env.ANITRYA_EMAIL_FROM?.trim());
+  return Boolean(process.env.RESEND_API_KEY?.trim());
+}
+
+export function emailSender() {
+  return process.env.ANITRYA_EMAIL_FROM?.trim() || TEST_SENDER;
 }
 
 export function unsubscribeToken(email: string) {
@@ -65,20 +73,30 @@ async function projectSection(workspaceId: string, project: { id: string; slug: 
     <p style="margin:12px 0 0"><a href="${link}" style="background:#0ea5b7;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px">Open ${esc(project.name)} in Anitrya</a></p>`;
 }
 
-export async function sendWeeklyDigests(): Promise<{ sent: number; skipped: string | null; errors: number }> {
-  if (!emailConfigured()) return { sent: 0, skipped: "RESEND_API_KEY / ANITRYA_EMAIL_FROM not set", errors: 0 };
+export async function sendWeeklyDigests(options: { onlyWorkspaceId?: string; onlyEmail?: string } = {}): Promise<{
+  sent: number;
+  skipped: string | null;
+  errors: number;
+  firstError?: string;
+  sender?: string;
+}> {
+  if (!emailConfigured()) return { sent: 0, skipped: "RESEND_API_KEY not set", errors: 0 };
   await ensureAdditiveSchema();
   const optedOut = new Set(
     (await prisma.$queryRawUnsafe<Array<{ email: string }>>(`SELECT email FROM email_optout`).catch(() => [])).map((r) => r.email.toLowerCase()),
   );
   const workspaces = await prisma.workspace.findMany({
+    where: options.onlyWorkspaceId ? { id: options.onlyWorkspaceId } : undefined,
     select: { id: true, name: true, projects: { select: { id: true, slug: true, name: true } }, memberships: { select: { user: { select: { email: true } } } } },
   });
 
   let sent = 0;
   let errors = 0;
+  let firstError: string | undefined;
   for (const workspace of workspaces) {
-    const recipients = workspace.memberships.map((m) => m.user.email).filter((e): e is string => Boolean(e) && !optedOut.has(e!.toLowerCase()));
+    const recipients = options.onlyEmail
+      ? [options.onlyEmail]
+      : workspace.memberships.map((m) => m.user.email).filter((e): e is string => Boolean(e) && !optedOut.has(e!.toLowerCase()));
     if (recipients.length === 0 || workspace.projects.length === 0) continue;
     const sections = (await Promise.all(workspace.projects.map((p) => projectSection(workspace.id, p).catch(() => null)))).filter(Boolean);
     if (sections.length === 0) continue;
@@ -96,7 +114,7 @@ export async function sendWeeklyDigests(): Promise<{ sent: number; skipped: stri
         method: "POST",
         headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}`, "content-type": "application/json" },
         body: JSON.stringify({
-          from: process.env.ANITRYA_EMAIL_FROM,
+          from: emailSender(),
           to: [email],
           subject: `Your weekly Anitrya insight — ${workspace.projects.length} project${workspace.projects.length === 1 ? "" : "s"}`,
           html,
@@ -104,8 +122,14 @@ export async function sendWeeklyDigests(): Promise<{ sent: number; skipped: stri
         }),
       }).catch(() => null);
       if (response?.ok) sent++;
-      else errors++;
+      else {
+        errors++;
+        if (!firstError) {
+          const detail = response ? await response.json().catch(() => null) : null;
+          firstError = response ? `Resend ${response.status}: ${detail?.message ?? response.statusText}` : "Could not reach Resend";
+        }
+      }
     }
   }
-  return { sent, skipped: null, errors };
+  return { sent, skipped: null, errors, firstError, sender: emailSender() };
 }
