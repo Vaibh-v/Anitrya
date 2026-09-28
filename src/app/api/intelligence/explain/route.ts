@@ -2,13 +2,15 @@ import { after, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
-import { cachedIntelligence } from "@/lib/evidence/cached";
+import { cachedGeo, cachedIntelligence } from "@/lib/evidence/cached";
 import { evidenceHash, runConsensus } from "@/lib/ai/consensus";
 import { recallConsensus, rememberConsensus } from "@/lib/ai/memory";
 import { availableProviders, providerSummary } from "@/lib/ai/providers";
 import { resolveFounderWorkspaceId } from "@/lib/intelligence/owner-network/owner-auth";
 import { prisma } from "@/lib/prisma";
 import { canSeeProject, requirePermission } from "@/lib/org/access";
+
+const OVERVIEW_ID = "__overview__";
 
 export const maxDuration = 60;
 
@@ -42,10 +44,39 @@ export async function POST(request: Request) {
     from: body.from,
     to: body.to,
   });
-  const insight = output.insights.find((i) => i.insightId === body.insightId);
+  // "__overview__" is the Overview copilot: the question is asked of the whole
+  // project, with every finding (and where visitors come from) as the evidence.
+  let insight = output.insights.find((i) => i.insightId === body.insightId);
+  if (!insight && body.insightId === OVERVIEW_ID && output.insights.length > 0) {
+    const geo = await cachedGeo({ workspaceId, projectSlug: project.projectSlug, from: body.from, to: body.to });
+    const top = output.insights[0];
+    insight = {
+      ...top,
+      insightId: OVERVIEW_ID,
+      title: `${project.projectLabel}: ${output.insights.length} findings for ${body.from} to ${body.to}`,
+      finding: output.insights.slice(0, 6).map((i, n) => `${n + 1}. ${i.title} — ${i.finding}`).join(" "),
+      recommendedAction: top.recommendedAction,
+      comparison: undefined,
+      impactValue: undefined,
+      rowHeaders: ["Finding / market", "Impact or share", "Confidence"],
+      rows: [
+        ...output.insights.slice(0, 6).map((i) => ({
+          label: i.title,
+          values: [i.impactValue ? `${i.impactValue} ${i.impactUnit ?? ""}`.trim() : "—", i.confidence ? `${Math.round(i.confidence * 100)}%` : "—"],
+        })),
+        ...geo.countries.slice(0, 4).map((c) => ({
+          label: `Visitors from ${c.name}`,
+          values: [`${c.sessions} sessions (${geo.totalSessions ? Math.round((c.sessions / geo.totalSessions) * 100) : 0}%)`, "measured"],
+        })),
+      ],
+    };
+  }
   if (!insight) return NextResponse.json({ ok: false, error: "Finding not found for this range." }, { status: 404 });
 
   const question = body.question?.slice(0, 400);
+  if (insight.insightId === OVERVIEW_ID && !question?.trim()) {
+    return NextResponse.json({ ok: false, error: "Type a question about this project." }, { status: 400 });
+  }
   const hash = evidenceHash(insight, question?.trim() || "Why is this happening, and what should we do first?");
   const remembered = await recallConsensus(workspaceId, hash);
   if (remembered) return NextResponse.json({ ok: true, cached: true, consensus: remembered });

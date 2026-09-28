@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { SignalGlobe } from "@/components/dashboard/SignalGlobe";
 import { PageTip } from "@/components/dashboard/PageTip";
+import { OverviewCopilot } from "@/components/dashboard/OverviewCopilot";
 import { authOptions } from "@/lib/auth";
 import { getProjectMapping } from "@/lib/project/project-mapper";
 import { scopedProjectRef } from "@/lib/org/access";
@@ -198,15 +199,9 @@ export default async function HomePage(props: PageProps) {
             {actions.map((action, index) => <div className="eye-row" key={action}><span className="eye-mono">0{index + 1}</span><span>{action}</span></div>)}
           </section>
 
-          <section className="eye-panel eye-copilot">
-            <h2>Analyst copilot <span className="eye-tag">Not connected</span></h2>
-            <p className="eye-chat-bubble">I can show which evidence groups are available. Conversational answers need a connected reasoning service and source-level citations.</p>
-            <div className="eye-suggestions">
-              <Link href={destination("/home/seo")}>Explore search evidence ↗</Link>
-              <Link href={destination("/home/behavior")}>Explore behavior ↗</Link>
-            </div>
-            <div className="eye-chat-input"><span>Ask about your market</span><button type="button" disabled title="Copilot is not connected">Send</button></div>
-          </section>
+          {project && !unavailable ? (
+            <OverviewCopilot project={project.projectSlug} from={from} to={to} seoHref={destination("/home/seo")} behaviorHref={destination("/home/behavior")} />
+          ) : null}
         </aside>
       </div>
     </main>

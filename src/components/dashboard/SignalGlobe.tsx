@@ -192,9 +192,9 @@ export function SignalGlobe({ searchRows, trafficRows, paidRows, localRows, proj
     [searchRows, trafficRows, paidRows, localRows].forEach((rows, index) => {
       if (!rows) return;
       context.strokeStyle = ["#5cf2ff", "#8b7bff", "#ffc861", "#4ade9d"][index];
-      context.lineWidth = 3;
+      context.lineWidth = 2;
       context.beginPath();
-      context.arc(centerX, centerY, radius * (.78 - index * .07), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, Math.log1p(rows) / 10));
+      context.arc(centerX, centerY, radius * (1.06 + index * .035), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, Math.log1p(rows) / 10));
       context.stroke();
     });
   }, [layers, searchRows, trafficRows, paidRows, localRows, points]);

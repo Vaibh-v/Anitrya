@@ -49,7 +49,7 @@ test("rate-limited model falls through to the next one", async () => {
   const realFetch = globalThis.fetch;
   const used = [];
   globalThis.fetch = async (url, init) => {
-    if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "a/llama-3.3-70b-instruct:free" }, { id: "b/deepseek-r1:free" }] }));
+    if (String(url).endsWith("/models")) return new Response(JSON.stringify({ data: [{ id: "a/llama-3.3-70b-instruct:free" }, { id: "google/gemma-3-27b-it:free" }] }));
     const body = JSON.parse(init.body);
     used.push(body.model);
     if (used.length === 1) return new Response(JSON.stringify({ error: { message: "busy" } }), { status: 429 });
@@ -57,7 +57,7 @@ test("rate-limited model falls through to the next one", async () => {
   };
   try {
     assert.equal(await p.complete(provider, "s", "u"), "{}");
-    assert.deepEqual(used, ["a/llama-3.3-70b-instruct:free", "b/deepseek-r1:free"]);
+    assert.deepEqual(used, ["a/llama-3.3-70b-instruct:free", "google/gemma-3-27b-it:free"]);
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.OPENROUTER_API_KEY;

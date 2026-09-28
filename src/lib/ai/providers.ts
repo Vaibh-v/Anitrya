@@ -53,9 +53,11 @@ export function providerSummary() {
 const PREFERENCES: Partial<Record<ProviderId, RegExp[]>> = {
   groq: [/llama-3\.3-70b/, /gpt-oss-120b/, /llama-4-maverick/, /llama-4-scout/, /qwen.*32b/, /llama-3\.1-8b/],
   cerebras: [/llama-3\.3-70b/, /gpt-oss-120b/, /qwen-3-.*235b/, /llama-4/, /qwen/, /llama3\.1-8b/],
-  openrouter: [/llama-3\.3-70b.*:free$/, /deepseek.*:free$/, /qwen.*:free$/, /gemma.*:free$/, /mistral.*:free$/, /:free$/],
+  // Non-reasoning free models first: reasoning models spend the token budget thinking.
+  openrouter: [/llama-3\.3-70b.*:free$/, /gemma-3-27b.*:free$/, /mistral-small.*:free$/, /qwen.*(?<!think)(?<!r1):free$/, /llama.*:free$/, /gemma.*:free$/, /:free$/],
   mistral: [/^mistral-small-latest$/, /^mistral-medium-latest$/, /^open-mistral-nemo/, /^mistral-small/],
 };
+const REASONING = /(^|[/-])(r1|o1|o3|o4)([-:]|$)|thinking|reason/i;
 const modelCache = new Map<ProviderId, { models: string[]; at: number }>();
 
 async function candidateModels(provider: ProviderConfig, key: string): Promise<string[]> {
@@ -78,7 +80,7 @@ async function candidateModels(provider: ProviderConfig, key: string): Promise<s
   if (!ids || ids.length === 0) return [provider.defaultModel];
   const picked: string[] = [];
   for (const pattern of prefs) {
-    const match = ids.find((id) => pattern.test(id) && !picked.includes(id));
+    const match = ids.find((id) => pattern.test(id) && !picked.includes(id) && !REASONING.test(id));
     if (match) picked.push(match);
     if (picked.length >= (provider.id === "openrouter" ? 3 : 2)) break;
   }
