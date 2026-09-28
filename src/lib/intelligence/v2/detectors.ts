@@ -19,7 +19,7 @@ export type Finding = {
   unit: "clicks" | "sessions" | "engaged sessions" | "conversions" | "impressions";
   confidence: number;
   severity: IntelligenceSeverity;
-  table: "ga4_source_daily" | "ga4_landing_page_daily" | "gsc_query_daily" | "gsc_page_daily";
+  table: "ga4_source_daily" | "ga4_landing_page_daily" | "gsc_query_daily" | "gsc_page_daily" | "ga4_geo_daily";
   comparison?: { label: string; current: number; previous: number; unit: string };
   rowHeaders?: string[];
   rows?: Array<{ label: string; values: string[] }>;
@@ -464,6 +464,49 @@ export function concentration(ctx: DetectorContext): Finding | null {
   };
 }
 
+/* 12. Bot / junk traffic by geography */
+export function botTraffic(ctx: DetectorContext): Finding | null {
+  const countries = ctx.agg.countries ?? [];
+  const total = countries.reduce((t, c) => t + c.cur, 0);
+  if (total < 200) return null;
+  // Home market: where conversions happen (both windows), else the biggest country.
+  const byConv = [...countries].sort((a, b) => b.curConv + b.prevConv - (a.curConv + a.prevConv))[0];
+  const home = byConv && byConv.curConv + byConv.prevConv > 0 ? byConv : [...countries].sort((a, b) => b.cur - a.cur)[0];
+  const totalConv = countries.reduce((t, c) => t + c.curConv, 0);
+  const homeRate = home.cur > 0 ? home.curConv / home.cur : 0;
+  // Suspect: outside the home market, material volume, and converting far below it.
+  const suspects = countries
+    .filter((c) => c.id !== home.id && c.cur >= Math.max(30, total * 0.03))
+    .filter((c) => (homeRate > 0 ? c.curConv / c.cur < homeRate * 0.2 : c.curConv === 0))
+    .sort((a, b) => b.cur - a.cur);
+  const junk = suspects.reduce((t, c) => t + c.cur, 0);
+  if (junk / total < 0.1) return null;
+  const junkConv = suspects.reduce((t, c) => t + c.curConv, 0);
+  const rateAll = totalConv / total;
+  const rateClean = total - junk > 0 ? (totalConv - junkConv) / (total - junk) : 0;
+  const names = suspects.slice(0, 3).map((c) => c.name).join(", ");
+  return {
+    key: "bot_traffic",
+    category: "bot_traffic",
+    title: `${pct(junk / total, 0)} of sessions look like bot or junk traffic (${names})`,
+    finding: `${fmt(junk)} of ${fmt(total)} sessions come from ${count(suspects.length, "country", "countries")} outside ${home.name} that produced ${fmt(junkConv)} key events. Without them the conversion rate is ${pct(rateClean, 2)} instead of ${pct(rateAll, 2)}.`,
+    rationale: `The business converts in ${home.name}; sustained traffic from elsewhere with almost no conversions is usually crawlers, scrapers or referral spam. It inflates sessions and hides the real conversion rate.`,
+    action: `Exclude this traffic from reporting (a GA4 data filter or comparison segment for ${home.name}), and block obvious bots at the site edge (e.g. Cloudflare Bot Fight Mode) if it keeps growing.`,
+    expectedOutcome: "Sessions and conversion rate that reflect real customers, so every other finding is judged on clean numbers.",
+    impact: junk,
+    unit: "sessions",
+    confidence: Math.min(0.9, 0.55 + (junk / total) * 0.8),
+    severity: junk / total >= 0.25 ? "high" : "medium",
+    table: "ga4_geo_daily",
+    comparison: { label: "Conversion rate without suspect countries", current: Math.round(rateClean * 10000) / 100, previous: Math.round(rateAll * 10000) / 100, unit: "%" },
+    rowHeaders: ["Country", "Sessions", "Share", "Key events"],
+    rows: [home, ...suspects.slice(0, 6)].map((c) => ({
+      label: c.id === home.id ? `${c.name} (home market)` : c.name,
+      values: [fmt(c.cur), pct(c.cur / total, 0), fmt(c.curConv)],
+    })),
+  };
+}
+
 function totalImpr(ctx: DetectorContext) {
   return ctx.agg.queries.reduce((t, r) => t + r.curImpr, 0);
 }
@@ -480,6 +523,7 @@ export const DETECTORS = [
   anomalies,
   spamSignal,
   concentration,
+  botTraffic,
 ];
 
 export type { QueryAgg };

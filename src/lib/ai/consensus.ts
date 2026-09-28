@@ -78,7 +78,8 @@ export function evidencePacket(insight: IntelligenceInsight) {
     window: { from: insight.analysisWindowFrom, to: insight.analysisWindowTo },
     impact: insight.impactValue ? { value: insight.impactValue, unit: insight.impactUnit } : undefined,
     comparison: insight.comparison,
-    rows: insight.rows ? { headers: insight.rowHeaders, rows: insight.rows.slice(0, 8) } : undefined,
+    // Findings keep a compact table; questions carry their lookups too.
+    rows: insight.rows ? { headers: insight.rowHeaders, rows: insight.rows.slice(0, insight.rows.some((r) => r.label.startsWith("[")) ? 45 : 8) } : undefined,
     engineAction: insight.recommendedAction,
   };
 }

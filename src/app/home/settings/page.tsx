@@ -14,6 +14,7 @@ import { GoogleAdsAccountMappingPanel } from "@/components/settings/GoogleAdsAcc
 import { ProjectDirectory } from "@/components/settings/ProjectDirectory";
 import { StoragePanel } from "@/components/settings/StoragePanel";
 import { TeamPanel } from "@/components/settings/TeamPanel";
+import { BillingPanel } from "@/components/settings/BillingPanel";
 import { can, getAccess } from "@/lib/org/access";
 import { resolveFounderWorkspaceId } from "@/lib/intelligence/owner-network/owner-auth";
 
@@ -145,6 +146,7 @@ export default async function SettingsPage({
         <a href="#export"><span>04</span>Export</a>
         <a href="#health"><span>05</span>Health</a>
         <a href="#team"><span>06</span>Team</a>
+        <a href="#billing"><span>07</span>Plan</a>
       </nav>
 
       <section id="projects" className="eye-step">
@@ -213,6 +215,11 @@ export default async function SettingsPage({
       <section id="team" className="eye-step">
         <StepHead index="06" title="Team" text="Who can see and change this organization, and what each role may do." />
         <TeamPanel projects={allProjects.map((p) => ({ slug: p.slug, name: p.name }))} />
+      </section>
+
+      <section id="billing" className="eye-step">
+        <StepHead index="07" title="Plan & billing" text="Your plan, what it includes, and upgrades — paid securely through Stripe." />
+        <BillingPanel />
       </section>
 
       {selectedProject ? null : (

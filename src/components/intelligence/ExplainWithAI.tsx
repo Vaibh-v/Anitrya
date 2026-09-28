@@ -23,6 +23,7 @@ export function ExplainWithAI(props: { project: string; insightId: string; from:
   const [result, setResult] = useState<Consensus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
+  const [lookups, setLookups] = useState<string[]>([]);
 
   async function ask(custom?: string) {
     setState("loading");
@@ -36,6 +37,7 @@ export function ExplainWithAI(props: { project: string; insightId: string; from:
       .catch(() => null);
     if (payload?.ok) {
       setResult(payload.consensus);
+      setLookups(Array.isArray(payload.lookups) ? payload.lookups : []);
       setState("done");
     } else {
       setError(payload?.error ?? "The AI panel is unavailable right now.");
@@ -74,6 +76,7 @@ export function ExplainWithAI(props: { project: string; insightId: string; from:
             </ol>
           ) : null}
           {result.action ? <p className="eye-finding-action"><span>AI suggests</span>{result.action}</p> : null}
+          {lookups.length ? <p className="eye-finding-muted">Looked at: {lookups.join(" · ")}</p> : null}
           <p className="eye-finding-muted eye-ai-models">
             {result.models.map((m) => `${m.provider}: ${m.ok ? `verified ${Math.round((m.verification ?? 1) * 100)}%` : m.error ?? "no answer"}`).join(" · ")}
           </p>

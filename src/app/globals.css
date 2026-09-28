@@ -396,3 +396,13 @@ a.eye-button { display: inline-flex; align-items: center; text-decoration: none;
 .eye-ai-ask { display: flex; gap: 8px; margin-top: 4px; }
 .eye-ai-ask input { flex: 1; min-width: 0; border: 1px solid var(--eye-border); border-radius: 10px; background: rgba(255,255,255,.04); padding: 8px 10px; color: #e8eef7; font-size: 12px; }
 .eye-pill-warn { border-color: rgba(245,196,107,.5) !important; color: #f5c46b !important; }
+
+.eye-billing-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+.eye-billing-head h2 { margin: 4px 0; font-size: 22px; }
+.eye-billing-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 16px; }
+.eye-billing-plan { display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--eye-border); border-radius: 12px; padding: 14px; }
+.eye-billing-plan.is-current { border-color: var(--eye-cyan); }
+.eye-billing-plan ul { margin: 4px 0 8px; padding-left: 16px; font-size: 12px; color: var(--eye-muted); display: grid; gap: 2px; }
+.eye-billing-plan .eye-button { margin-top: auto; }
+.eye-finding-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.eye-finding-actions > .eye-ai { flex-basis: 100%; order: 2; }

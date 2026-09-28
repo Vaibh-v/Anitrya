@@ -185,6 +185,30 @@ const STATEMENTS = [
     "users" INTEGER NOT NULL DEFAULT 0,
     "key_events" INTEGER NOT NULL DEFAULT 0
   )`,
+  // Stripe billing on the organization's plan row.
+  `ALTER TABLE "org_plan" ADD COLUMN IF NOT EXISTS "stripe_customer_id" TEXT`,
+  `ALTER TABLE "org_plan" ADD COLUMN IF NOT EXISTS "stripe_subscription_id" TEXT`,
+  // Recommendation outcomes: what was done, and the measured result later.
+  `CREATE TABLE IF NOT EXISTS "recommendation_outcome" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "workspace_id" TEXT NOT NULL,
+    "project_slug" TEXT NOT NULL,
+    "insight_key" TEXT NOT NULL,
+    "category" TEXT NOT NULL,
+    "title" TEXT NOT NULL,
+    "metric" TEXT NOT NULL,
+    "baseline" DOUBLE PRECISION NOT NULL,
+    "marked_at" TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "measure_after" TIMESTAMP(6) NOT NULL,
+    "measured_at" TIMESTAMP(6),
+    "result" DOUBLE PRECISION,
+    "lift" DOUBLE PRECISION,
+    "providers" JSONB NOT NULL DEFAULT '[]'::jsonb,
+    "detail" JSONB NOT NULL DEFAULT '{}'::jsonb,
+    "marked_by" TEXT,
+    CONSTRAINT "recommendation_outcome_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "recommendation_outcome_key" ON "recommendation_outcome" ("workspace_id", "project_slug", "insight_key")`,
   `CREATE INDEX IF NOT EXISTS "ga4_geo_daily_scope_idx" ON "ga4_geo_daily" ("workspace_id", "project_slug", "date")`,
 ];
 
@@ -197,7 +221,7 @@ export function ensureAdditiveSchema(): Promise<void> {
       // One round trip in the common case: skip all DDL when every table exists.
       const present = await prisma.$queryRawUnsafe<Array<{ ok: boolean }>>(
         `SELECT (to_regclass('"SyncHealthRun"') IS NOT NULL AND to_regclass('gbp_location_daily') IS NOT NULL
-                 AND to_regclass('google_ads_campaign_daily') IS NOT NULL AND to_regclass('semrush_evidence_snapshot') IS NOT NULL AND to_regclass('ai_memory') IS NOT NULL AND to_regclass('email_optout') IS NOT NULL AND to_regclass('org_plan') IS NOT NULL AND to_regclass('org_invite') IS NOT NULL AND to_regclass('member_scope') IS NOT NULL AND to_regclass('user_pref') IS NOT NULL AND to_regclass('audit_log') IS NOT NULL AND to_regclass('ga4_geo_daily') IS NOT NULL AND EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'Role' AND e.enumlabel = 'CLIENT_VIEWER')) AS ok`,
+                 AND to_regclass('google_ads_campaign_daily') IS NOT NULL AND to_regclass('semrush_evidence_snapshot') IS NOT NULL AND to_regclass('ai_memory') IS NOT NULL AND to_regclass('email_optout') IS NOT NULL AND to_regclass('org_plan') IS NOT NULL AND to_regclass('org_invite') IS NOT NULL AND to_regclass('member_scope') IS NOT NULL AND to_regclass('user_pref') IS NOT NULL AND to_regclass('audit_log') IS NOT NULL AND to_regclass('ga4_geo_daily') IS NOT NULL AND to_regclass('recommendation_outcome') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'org_plan' AND column_name = 'stripe_customer_id') AND EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid WHERE t.typname = 'Role' AND e.enumlabel = 'CLIENT_VIEWER')) AS ok`,
       );
       if (present[0]?.ok) return;
       for (const statement of STATEMENTS) {

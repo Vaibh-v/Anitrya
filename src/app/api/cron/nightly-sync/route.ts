@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureAdditiveSchema } from "@/lib/db/ensure-additive-schema";
 import { projectsNeedingSync, runAutoSync } from "@/lib/sync/auto-sync";
 import { isOrgWritable } from "@/lib/org/access";
+import { measureDueOutcomes } from "@/lib/intelligence/outcomes";
 
 export const maxDuration = 300;
 
@@ -17,6 +18,8 @@ export async function GET(request: Request) {
   }
   await ensureAdditiveSchema();
   const started = Date.now();
+  // Four-week results for recommendations customers marked as done.
+  const outcomes = await measureDueOutcomes().catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
   const workspaces = await prisma.workspace.findMany({ select: { id: true } });
   let synced = 0;
   for (const workspace of workspaces) {
@@ -27,5 +30,5 @@ export async function GET(request: Request) {
     await runAutoSync(workspace.id, slugs).catch((error) => console.error("NIGHTLY_SYNC_FAILED", workspace.id, error));
     synced++;
   }
-  return NextResponse.json({ ok: true, workspaces: workspaces.length, synced });
+  return NextResponse.json({ ok: true, workspaces: workspaces.length, synced, outcomes });
 }

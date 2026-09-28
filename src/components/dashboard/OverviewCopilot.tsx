@@ -20,6 +20,7 @@ export function OverviewCopilot(props: { project: string; from: string; to: stri
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lookups, setLookups] = useState<string[]>([]);
 
   async function ask(text: string) {
     const q = text.trim();
@@ -36,7 +37,10 @@ export function OverviewCopilot(props: { project: string; from: string; to: stri
       .then((r) => r.json())
       .catch(() => null);
     setLoading(false);
-    if (payload?.ok) setAnswer(payload.consensus);
+    if (payload?.ok) {
+      setAnswer(payload.consensus);
+      setLookups(Array.isArray(payload.lookups) ? payload.lookups : []);
+    }
     else setError(payload?.error ?? "The AI panel is unavailable right now.");
   }
 
@@ -48,7 +52,7 @@ export function OverviewCopilot(props: { project: string; from: string; to: stri
         Analyst copilot <span className={`eye-tag ${answer?.agreement === "strong" ? "eye-tag-green" : ""}`}>{answer ? `${agreed} ${agreed === 1 ? "model" : "models"} · checked against data` : "AI panel"}</span>
       </h2>
       {asked ? <p className="eye-chat-bubble eye-chat-question">{asked}</p> : null}
-      {loading ? <p className="eye-chat-bubble">Asking every connected model and checking their numbers against your data…</p> : null}
+      {loading ? <p className="eye-chat-bubble">Looking up the data this question needs, then asking every connected model and checking their numbers…</p> : null}
       {error ? <p className="eye-message is-error">{error}</p> : null}
       {answer && agreed === 0 ? (
         <p className="eye-message is-error">No model gave an answer that matched your data this time ({answer.models.map((m) => m.provider).join(", ")}). Try again in a minute.</p>
@@ -66,6 +70,7 @@ export function OverviewCopilot(props: { project: string; from: string; to: stri
             </ol>
           ) : null}
           {answer.action ? <p className="eye-finding-action"><span>Do first</span>{answer.action}</p> : null}
+          {lookups.length ? <p className="eye-finding-muted">Looked at: {lookups.join(" · ")}</p> : null}
         </div>
       ) : null}
       {!asked ? (

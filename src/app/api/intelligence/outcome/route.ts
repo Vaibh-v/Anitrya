@@ -1,150 +1,43 @@
 import { NextResponse } from "next/server";
-import { requireSession } from "@/lib/auth";
-import {
-  insertRecommendationOutcome,
-  listRecommendationOutcomes,
-} from "@/lib/intelligence/outcome-store";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getProjectMapping } from "@/lib/project/project-mapper";
+import { cachedIntelligence } from "@/lib/evidence/cached";
+import { canSeeProject, requirePermission, audit } from "@/lib/org/access";
+import { evidenceHash } from "@/lib/ai/consensus";
+import { recallConsensus } from "@/lib/ai/memory";
+import { PROVIDERS } from "@/lib/ai/providers";
+import { markDone } from "@/lib/intelligence/outcomes";
 
-function asNonEmptyString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function asNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim() !== "") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return 0;
-}
-
-export async function GET(request: Request) {
-  try {
-    const session = await requireSession();
-    const { searchParams } = new URL(request.url);
-
-    const workspaceId = session.user?.workspaceId;
-    if (!workspaceId) {
-      return NextResponse.json(
-        { ok: false, error: "Missing workspaceId on session." },
-        { status: 401 }
-      );
-    }
-
-    const projectSlug = asNonEmptyString(searchParams.get("project"));
-    const hypothesisTitle = asNonEmptyString(searchParams.get("hypothesisTitle"));
-    const limit = asNumber(searchParams.get("limit")) || 100;
-
-    const outcomes = await listRecommendationOutcomes({
-      workspaceId,
-      projectSlug: projectSlug || undefined,
-      hypothesisTitle: hypothesisTitle || undefined,
-      limit,
-    });
-
-    return NextResponse.json({
-      ok: true,
-      outcomes: outcomes.map((row) => ({
-        id: row.id,
-        workspaceId: row.workspace_id,
-        projectSlug: row.project_slug,
-        hypothesisTitle: row.hypothesis_title,
-        recommendationTitle: row.recommendation_title,
-        outcomeStatus: row.outcome_status,
-        outcomeNote: row.outcome_note,
-        impactDelta: row.impact_delta,
-        createdAt: row.created_at.toISOString(),
-      })),
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: error?.message ?? "Failed to load recommendation outcomes.",
-      },
-      { status: error?.status ?? 500 }
-    );
-  }
-}
-
+/**
+ * POST { project, insightId, from, to } — marks a finding's recommendation as
+ * done. The baseline is recorded now and the result is measured in 4 weeks.
+ */
 export async function POST(request: Request) {
-  try {
-    const session = await requireSession();
-    const workspaceId = session.user?.workspaceId;
-
-    if (!workspaceId) {
-      return NextResponse.json(
-        { ok: false, error: "Missing workspaceId on session." },
-        { status: 401 }
-      );
-    }
-
-    const body = await request.json();
-
-    const projectSlug = asNonEmptyString(body?.projectSlug);
-    const hypothesisTitle = asNonEmptyString(body?.hypothesisTitle);
-    const recommendationTitle = asNonEmptyString(body?.recommendationTitle);
-    const outcomeStatus = asNonEmptyString(body?.outcomeStatus) as
-      | "accepted"
-      | "rejected"
-      | "implemented"
-      | "improved"
-      | "no_impact";
-    const outcomeNote = asNonEmptyString(body?.outcomeNote);
-    const impactDelta = asNumber(body?.impactDelta);
-
-    if (!projectSlug) {
-      return NextResponse.json(
-        { ok: false, error: "projectSlug is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!hypothesisTitle) {
-      return NextResponse.json(
-        { ok: false, error: "hypothesisTitle is required." },
-        { status: 400 }
-      );
-    }
-
-    if (!recommendationTitle) {
-      return NextResponse.json(
-        { ok: false, error: "recommendationTitle is required." },
-        { status: 400 }
-      );
-    }
-
-    if (
-      !["accepted", "rejected", "implemented", "improved", "no_impact"].includes(
-        outcomeStatus
-      )
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid outcomeStatus." },
-        { status: 400 }
-      );
-    }
-
-    await insertRecommendationOutcome({
-      workspaceId,
-      projectSlug,
-      hypothesisTitle,
-      recommendationTitle,
-      outcomeStatus,
-      outcomeNote,
-      impactDelta,
-    });
-
-    return NextResponse.json({
-      ok: true,
-    });
-  } catch (error: any) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: error?.message ?? "Failed to record recommendation outcome.",
-      },
-      { status: error?.status ?? 500 }
-    );
+  const session = await getServerSession(authOptions);
+  const workspaceId = session?.user?.workspaceId;
+  if (!workspaceId) return NextResponse.json({ ok: false }, { status: 401 });
+  const body = (await request.json().catch(() => ({}))) as { project?: string; insightId?: string; from?: string; to?: string };
+  if (!body.project || !body.insightId || !body.from || !body.to) {
+    return NextResponse.json({ ok: false, error: "project, insightId, from and to are required." }, { status: 400 });
   }
+  const access = await requirePermission("sync");
+  if (access instanceof NextResponse) return access;
+  const project = await getProjectMapping({ ref: body.project, workspaceId });
+  if (!canSeeProject(access, project.projectSlug)) return NextResponse.json({ ok: false, error: "No access to this project." }, { status: 403 });
+
+  const output = await cachedIntelligence({ workspaceId, projectId: project.projectId, projectSlug: project.projectSlug, projectLabel: project.projectLabel, from: body.from, to: body.to });
+  const insight = output.insights.find((i) => i.insightId === body.insightId);
+  if (!insight) return NextResponse.json({ ok: false, error: "Finding not found for this range." }, { status: 404 });
+
+  // Credit the models that explained this finding, if the AI panel was asked.
+  const remembered = await recallConsensus(workspaceId, evidenceHash(insight, "Why is this happening, and what should we do first?"));
+  const providers = (remembered?.models ?? [])
+    .filter((m) => m.ok)
+    .map((m) => PROVIDERS.find((p) => p.label === m.provider)?.id)
+    .filter((id): id is NonNullable<typeof id> => Boolean(id));
+
+  const result = await markDone({ workspaceId, projectSlug: project.projectSlug, insight, providers, email: access.email });
+  await audit(access, "outcome.marked", { project: project.projectSlug, category: insight.category });
+  return NextResponse.json({ ok: true, ...result });
 }

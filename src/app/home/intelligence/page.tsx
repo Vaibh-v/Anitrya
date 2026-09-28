@@ -8,6 +8,8 @@ import type { IntelligenceRunOutput } from "@/lib/intelligence/contracts";
 import { EmptyState, KpiGrid, PageHeading, formatNumber, resolveRange } from "@/components/dashboard/PageParts";
 import { PageTip } from "@/components/dashboard/PageTip";
 import { ExplainWithAI } from "@/components/intelligence/ExplainWithAI";
+import { MarkDone } from "@/components/intelligence/MarkDone";
+import { outcomeKey, outcomesFor } from "@/lib/intelligence/outcomes";
 
 type PageProps = {
   searchParams?: Promise<{ project?: string; from?: string; to?: string; preset?: string }>;
@@ -29,7 +31,10 @@ export default async function IntelligencePage(props: PageProps) {
   const params = (await props.searchParams) ?? {};
   const { from, to } = resolveRange(params);
   const project = await getProjectMapping({ ref: await scopedProjectRef(params.project), workspaceId });
-  const summary = await cachedOverviewSummary({ workspaceId, projectId: project.projectSlug, from, to });
+  const [summary, outcomes] = await Promise.all([
+    cachedOverviewSummary({ workspaceId, projectId: project.projectSlug, from, to }),
+    outcomesFor(workspaceId, project.projectSlug),
+  ]);
 
   // Rule-based and read-only: computed live from stored evidence, never persisted from this page.
   let output: IntelligenceRunOutput = { insights: [], recommendations: [] };
@@ -137,7 +142,19 @@ export default async function IntelligencePage(props: PageProps) {
                   <span>Priority {insight.priorityScore}</span>
                 </div>
                 {insight.category !== "data_gap" ? (
-                  <ExplainWithAI project={project.projectSlug} insightId={insight.insightId} from={from} to={to} />
+                  <div className="eye-finding-actions">
+                    <ExplainWithAI project={project.projectSlug} insightId={insight.insightId} from={from} to={to} />
+                    <MarkDone
+                      project={project.projectSlug}
+                      insightId={insight.insightId}
+                      from={from}
+                      to={to}
+                      outcome={(() => {
+                        const o = outcomes[outcomeKey(insight)];
+                        return o ? { metric: o.metric, baseline: o.baseline, measureAfter: new Date(o.measure_after).toISOString(), measured: Boolean(o.measured_at), lift: o.lift } : null;
+                      })()}
+                    />
+                  </div>
                 ) : null}
               </div>
             ))}

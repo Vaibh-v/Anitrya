@@ -9,7 +9,7 @@ const q = (label, curClicks, curImpr, curPos, prevClicks = 0, prevImpr = 0, prev
 const base = (over = {}) => ({
   agg: {
     window: buildWindow("2026-08-28", "2026-09-26"),
-    sources: [], landings: [], queries: [], pages: [], dailySessions: [], dailyClicks: [],
+    sources: [], landings: [], queries: [], pages: [], dailySessions: [], dailyClicks: [], countries: [],
     coverage: { ga4CurDays: 30, ga4PrevDays: 30, gscCurDays: 30, gscPrevDays: 30 },
     ...over,
   },
@@ -54,4 +54,15 @@ test("traffic change is decomposed by the sources that moved", () => {
   ] });
   const f = d.trafficChange(ctx);
   assert.ok(f && f.title.includes("down") && f.rows[0].label === "google / organic");
+});
+
+test("non-converting traffic outside the home market is flagged as likely bots", () => {
+  const c = (id, name, cur, curConv, prevConv = 0) => ({ id, name, cur, prev: 0, curConv, prevConv });
+  const f = d.botTraffic(base({ countries: [c("US", "United States", 1419, 20, 18), c("SG", "Singapore", 703, 0), c("CN", "China", 176, 0), c("CA", "Canada", 20, 0)] }));
+  assert.ok(f, "finding expected");
+  assert.equal(f.category, "bot_traffic");
+  assert.match(f.title, /Singapore, China/);
+  assert.equal(f.impact, 879, "Canada is below the volume floor");
+  assert.ok(f.comparison.current > f.comparison.previous, "clean conversion rate is higher");
+  assert.equal(d.botTraffic(base({ countries: [c("US", "United States", 900, 10), c("CA", "Canada", 60, 1)] })), null, "a converting neighbour is not bots");
 });

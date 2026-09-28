@@ -15,6 +15,7 @@ export type IntelligenceCategory =
   | "brand_split"
   | "anomaly"
   | "spam_signal"
+  | "bot_traffic"
   | "other";
 
 export type IntelligenceSeverity = "low" | "medium" | "high";
@@ -118,6 +119,7 @@ export type IntelligenceEvidenceRef = {
     | "ga4_landing_page_daily"
     | "gsc_query_daily"
     | "gsc_page_daily"
+    | "ga4_geo_daily"
     | "public_market_evidence";
   from: string;
   to: string;

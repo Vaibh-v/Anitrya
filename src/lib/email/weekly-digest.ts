@@ -13,6 +13,7 @@ import { runIntelligence } from "@/lib/intelligence/run-intelligence";
 const APP_URL = process.env.NEXTAUTH_URL?.replace(/\/$/, "") || "https://anitrya.vercel.app";
 
 export const TEST_SENDER = "Anitrya <onboarding@resend.dev>";
+export const PRODUCT_SENDER = "Anitrya <insights@anitrya.com>";
 
 export function emailConfigured() {
   return Boolean(process.env.RESEND_API_KEY?.trim());
@@ -29,7 +30,8 @@ export async function emailSender(): Promise<string> {
   const configured = process.env.ANITRYA_EMAIL_FROM?.trim();
   if (configured) return configured;
   if (senderCache && Date.now() - senderCache.at < 15 * 60_000) return senderCache.value;
-  let value = TEST_SENDER;
+  // Sending-only Resend keys can't list domains; the product domain is the default.
+  let value = PRODUCT_SENDER;
   try {
     const response = await fetch("https://api.resend.com/domains", {
       headers: { authorization: `Bearer ${process.env.RESEND_API_KEY}` },
@@ -38,6 +40,7 @@ export async function emailSender(): Promise<string> {
     const payload = (await response.json().catch(() => null)) as { data?: Array<{ name?: string; status?: string }> } | null;
     const verified = payload?.data?.find((d) => d.status === "verified" && d.name);
     if (verified) value = `Anitrya <insights@${verified.name}>`;
+    else if (response.ok) value = TEST_SENDER;
   } catch {
     /* keep the test sender */
   }

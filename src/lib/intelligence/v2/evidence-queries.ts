@@ -15,6 +15,7 @@ export type SourceAgg = { label: string; cur: number; prev: number; curEngaged: 
 export type LandingAgg = { label: string; cur: number; prev: number; curEngaged: number; curConv: number };
 export type QueryAgg = { label: string; curClicks: number; curImpr: number; curPos: number; prevClicks: number; prevImpr: number; prevPos: number };
 export type DailyAgg = { date: string; value: number };
+export type GeoAgg = { id: string; name: string; cur: number; prev: number; curConv: number; prevConv: number };
 
 export type EvidenceAggregates = {
   window: Window;
@@ -24,6 +25,8 @@ export type EvidenceAggregates = {
   pages: QueryAgg[];
   dailySessions: DailyAgg[];
   dailyClicks: DailyAgg[];
+  /** Sessions and key events by country (empty until geography has synced). */
+  countries: GeoAgg[];
   coverage: { ga4CurDays: number; ga4PrevDays: number; gscCurDays: number; gscPrevDays: number };
 };
 
@@ -64,7 +67,7 @@ export async function loadEvidenceAggregates(input: {
   const window = buildWindow(input.from, input.to);
   const params = [input.workspaceId, input.projectSlug, window.from, window.to, window.prevFrom];
 
-  const [sources, landings, queries, pages, dailySessions, dailyClicks, coverage] = await Promise.all([
+  const [sources, landings, queries, pages, dailySessions, dailyClicks, coverage, countries] = await Promise.all([
     q(
       `SELECT COALESCE(NULLIF(source,''),'(direct)') || COALESCE(' / ' || NULLIF(medium,''),'') AS label,
               SUM(CASE WHEN ${CUR} THEN sessions ELSE 0 END) AS cur,
@@ -109,6 +112,17 @@ export async function loadEvidenceAggregates(input: {
       params,
       true,
     ),
+    q(
+      `SELECT country_id AS id, MAX(country) AS name,
+              SUM(CASE WHEN date >= $3::date THEN sessions ELSE 0 END) AS cur,
+              SUM(CASE WHEN date >= $3::date THEN 0 ELSE sessions END) AS prev,
+              SUM(CASE WHEN date >= $3::date THEN key_events ELSE 0 END) AS cur_conv,
+              SUM(CASE WHEN date >= $3::date THEN 0 ELSE key_events END) AS prev_conv
+       FROM ga4_geo_daily
+       WHERE workspace_id = $1 AND project_slug = $2 AND date >= $5::date AND date <= $4::date AND country_id <> ''
+       GROUP BY country_id ORDER BY 3 DESC NULLS LAST LIMIT 80`,
+      params,
+    ),
   ]);
 
   const c = coverage[0] ?? {};
@@ -133,6 +147,14 @@ export async function loadEvidenceAggregates(input: {
     pages: pages.map(toSearch),
     dailySessions: dailySessions.map((r) => ({ date: String(r.d), value: n(r.v) })),
     dailyClicks: dailyClicks.map((r) => ({ date: String(r.d), value: n(r.v) })),
+    countries: countries.map((r) => ({
+      id: String(r.id ?? ""),
+      name: String(r.name ?? r.id ?? ""),
+      cur: n(r.cur),
+      prev: n(r.prev),
+      curConv: n(r.cur_conv),
+      prevConv: n(r.prev_conv),
+    })),
     coverage: {
       ga4CurDays: n(c.ga4_cur),
       ga4PrevDays: n(c.ga4_prev),
