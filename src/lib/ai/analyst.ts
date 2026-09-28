@@ -103,6 +103,19 @@ export const TOOLS: Record<string, { describe: string; run: (d: Data, a: Args) =
       };
     },
   },
+  seasonal_demand: {
+    describe: "What searchers did in this month and next month LAST YEAR (from Search Console history) — use for questions about the coming season or next month",
+    run: (d, a) => {
+      const season = d.agg.season;
+      if (!season) return { title: "Seasonal demand (no history synced yet)", headers: ["Query"], rows: [] };
+      const rows = [...season.queries]
+        .filter((r) => r.nextLy > 0 || r.thisLy > 0)
+        .sort((x, y) => y.nextLy - y.thisLy - (x.nextLy - x.thisLy))
+        .slice(0, lim(a, 10))
+        .map((r) => ({ label: r.label, values: [fmt(r.thisLy), fmt(r.nextLy), fmt(r.thisNow)] }));
+      return { title: `Search demand ${season.thisMonth} → ${season.nextMonth}, last year`, headers: ["Query", `${season.thisMonth} last year`, `${season.nextMonth} last year`, `${season.thisMonth} this year`], rows };
+    },
+  },
   daily_trend: {
     describe: 'Day-by-day totals for the window. metric: "sessions" | "clicks"',
     run: (d, a) => {
@@ -134,6 +147,7 @@ export function heuristicPlan(question: string): Array<{ name: string } & Args> 
   if (/keyword|query|queries|rank|search|seo|google/.test(q)) plan.push({ name: "search_queries", sort: /drop|lost|down|fell|decline/.test(q) ? "lost_clicks" : /opportunit|miss|grow/.test(q) ? "near_page_one" : "clicks" });
   if (/page|landing|convert|conversion|lead|bounce|engag/.test(q)) plan.push({ name: "landing_pages", sort: /convert|conversion|lead/.test(q) ? "conversion_rate" : "sessions" });
   if (/source|channel|traffic|referral|paid|ads|social|direct/.test(q)) plan.push({ name: "traffic_sources", sort: /drop|lost|down|fell/.test(q) ? "lost_sessions" : "sessions" });
+  if (/season|next month|coming month|coming season|upcoming|last year|peak|demand|winter|summer|holiday|october|november|december/.test(q)) plan.push({ name: "seasonal_demand" });
   if (/trend|week|over time|when|spike|dip/.test(q)) plan.push({ name: "daily_trend", metric: /click|search/.test(q) ? "clicks" : "sessions" });
   if (plan.length === 0) plan.push({ name: "search_queries", sort: "near_page_one" }, { name: "traffic_sources", sort: "sessions" });
   return plan.slice(0, 3);

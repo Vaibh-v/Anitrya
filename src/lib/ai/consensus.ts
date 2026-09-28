@@ -220,7 +220,13 @@ export async function runConsensus(input: {
   const ask = async (provider: ProviderConfig): Promise<ModelAnswer> => {
     const t0 = Date.now();
     try {
-      const parsed = parseAnswer(await complete(provider, SYSTEM, user));
+      // One retry when a model answers in prose or cuts its JSON short.
+      const parsed = await complete(provider, SYSTEM, user)
+        .then(parseAnswer)
+        .catch(async (error) => {
+          if (!(error instanceof Error) || !/not valid JSON|empty reply/.test(error.message)) throw error;
+          return parseAnswer(await complete(provider, SYSTEM, `${user}\n\nReply with one short, complete JSON object only.`));
+        });
       const verification = verificationScore(parsed.numbersCited, allowed);
       const trust = input.weightFor?.(provider.id, input.insight.category) ?? 1;
       health.push({ id: provider.id, ok: true, ms: Date.now() - t0, benchMinutes: 0 });
